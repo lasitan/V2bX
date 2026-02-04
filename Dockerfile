@@ -23,6 +23,9 @@ RUN set -e; \
     done
 RUN GOEXPERIMENT=jsonv2 GOOS=$TARGETOS GOARCH=$TARGETARCH go build -v -o V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor"
 
+FROM scratch AS artifact
+COPY --from=builder /app/V2bX /V2bX
+
 # Release
 FROM --platform=$TARGETPLATFORM alpine
 # 安装必要的工具包

@@ -10,7 +10,7 @@ permissions:
 
 jobs:
   build-binaries:
-    runs-on: [self-hosted, Linux, ARM64]
+    runs-on: [self-hosted, Linux, X86]
     strategy:
       fail-fast: false
       matrix:
@@ -33,7 +33,7 @@ jobs:
         uses: docker/build-push-action@v6
         with:
           context: .
-          target: builder
+          target: artifact
           platforms: ${{ matrix.platform }}
           outputs: type=local,dest=dist/${{ matrix.platform }}
 
