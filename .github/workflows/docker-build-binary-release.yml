@@ -2,6 +2,14 @@ name: Docker Build Binary and Upload Release
 
 on:
   workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to upload assets to (e.g. v1.2.3). Required for manual runs.'
+        required: true
+        type: string
+  push:
+    tags:
+      - 'v*'
   release:
     types: [published]
 
@@ -10,7 +18,7 @@ permissions:
 
 jobs:
   build-binaries:
-    runs-on: [self-hosted, Linux, X86]
+    runs-on: [self-hosted, Linux, X64]
     strategy:
       fail-fast: false
       matrix:
@@ -22,6 +30,17 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Resolve tag
+        id: tag
+        run: |
+          if [ "${{ github.event_name }}" = "release" ]; then
+            echo "tag=${{ github.event.release.tag_name }}" >> "$GITHUB_OUTPUT"
+          elif [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
+          fi
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -69,10 +88,8 @@ jobs:
           pkg="V2bX-linux-${{ matrix.asset_arch }}.zip"
           (cd "${work_dir}" && zip -9r "${GITHUB_WORKSPACE}/release_out/${pkg}" .)
 
-      - name: Upload binaries to release
-        uses: svenstaro/upload-release-action@v2
+      - name: Upload assets to release
+        uses: softprops/action-gh-release@v2
         with:
-          repo_token: ${{ secrets.GITHUB_TOKEN }}
-          file: release_out/*
-          tag: ${{ github.ref }}
-          file_glob: true
+          tag_name: ${{ steps.tag.outputs.tag }}
+          files: release_out/*
