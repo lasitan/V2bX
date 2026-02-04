@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/sirupsen/logrus"
@@ -21,6 +22,10 @@ type Client struct {
 	Token            string
 	NodeType         string
 	NodeId           int
+	timeout          time.Duration
+	queryParams      map[string]string
+	wsState          int32
+	wsLastFailUnixNs int64
 	nodeEtag         string
 	userEtag         string
 	responseBodyHash string
@@ -31,10 +36,13 @@ type Client struct {
 func New(c *conf.ApiConfig) (*Client, error) {
 	client := resty.New()
 	client.SetRetryCount(3)
+	var timeout time.Duration
 	if c.Timeout > 0 {
-		client.SetTimeout(time.Duration(c.Timeout) * time.Second)
+		timeout = time.Duration(c.Timeout) * time.Second
+		client.SetTimeout(timeout)
 	} else {
-		client.SetTimeout(5 * time.Second)
+		timeout = 5 * time.Second
+		client.SetTimeout(timeout)
 	}
 	client.OnError(func(req *resty.Request, err error) {
 		var v *resty.ResponseError
@@ -63,18 +71,32 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		return nil, fmt.Errorf("unsupported Node type: %s", c.NodeType)
 	}
 	// set params
-	client.SetQueryParams(map[string]string{
+	queryParams := map[string]string{
 		"node_type": c.NodeType,
 		"node_id":   strconv.Itoa(c.NodeID),
 		"token":     c.Key,
-	})
+	}
+	client.SetQueryParams(queryParams)
 	return &Client{
 		client:   client,
 		Token:    c.Key,
 		APIHost:  c.APIHost,
 		NodeType: c.NodeType,
 		NodeId:   c.NodeID,
+		timeout:  timeout,
+		queryParams: func() map[string]string {
+			m := make(map[string]string, len(queryParams))
+			for k, v := range queryParams {
+				m[k] = v
+			}
+			return m
+		}(),
+		wsState:  int32(wsStateUnknown),
 		UserList: &UserListBody{},
 		AliveMap: &AliveMap{},
 	}, nil
+}
+
+func (c *Client) disableWS() {
+	atomic.StoreInt32(&c.wsState, int32(wsStateUnavailable))
 }

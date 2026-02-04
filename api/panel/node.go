@@ -151,34 +151,26 @@ type Rules struct {
 
 func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	const path = "/api/v1/server/UniProxy/config"
-	r, err := c.client.
-		R().
-		SetHeader("If-None-Match", c.nodeEtag).
-		ForceContentType("application/json").
-		Get(path)
-
-	if r.StatusCode() == 304 {
+	status, headers, body, _, err := c.doRequest("GET", path, map[string]string{
+		"If-None-Match": c.nodeEtag,
+		"Accept":        "application/json",
+	}, nil)
+	if status == 304 {
 		return nil, nil
 	}
-	hash := sha256.Sum256(r.Body())
+	hash := sha256.Sum256(body)
 	newBodyHash := hex.EncodeToString(hash[:])
 	if c.responseBodyHash == newBodyHash {
 		return nil, nil
 	}
 	c.responseBodyHash = newBodyHash
-	c.nodeEtag = r.Header().Get("ETag")
-	if err = c.checkResponse(r, path, err); err != nil {
-		return nil, err
+	if headers != nil {
+		if v, ok := headers["ETag"]; ok && len(v) > 0 {
+			c.nodeEtag = v[0]
+		}
 	}
-
-	if r != nil {
-		defer func() {
-			if r.RawBody() != nil {
-				r.RawBody().Close()
-			}
-		}()
-	} else {
-		return nil, fmt.Errorf("received nil response")
+	if err = c.checkResponseRaw(path, status, body, err); err != nil {
+		return nil, err
 	}
 	node = &NodeInfo{
 		Id:   c.NodeId,
@@ -193,7 +185,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	switch c.NodeType {
 	case "vmess", "vless":
 		rsp := &VAllssNode{}
-		err = json.Unmarshal(r.Body(), rsp)
+		err = json.Unmarshal(body, rsp)
 		if err != nil {
 			return nil, fmt.Errorf("decode v2ray params error: %s", err)
 		}
@@ -210,7 +202,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		node.Security = node.VAllss.Tls
 	case "shadowsocks":
 		rsp := &ShadowsocksNode{}
-		err = json.Unmarshal(r.Body(), rsp)
+		err = json.Unmarshal(body, rsp)
 		if err != nil {
 			return nil, fmt.Errorf("decode shadowsocks params error: %s", err)
 		}
@@ -219,7 +211,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		node.Security = None
 	case "trojan":
 		rsp := &TrojanNode{}
-		err = json.Unmarshal(r.Body(), rsp)
+		err = json.Unmarshal(body, rsp)
 		if err != nil {
 			return nil, fmt.Errorf("decode trojan params error: %s", err)
 		}
@@ -228,7 +220,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		node.Security = Tls
 	case "tuic":
 		rsp := &TuicNode{}
-		err = json.Unmarshal(r.Body(), rsp)
+		err = json.Unmarshal(body, rsp)
 		if err != nil {
 			return nil, fmt.Errorf("decode tuic params error: %s", err)
 		}
@@ -237,7 +229,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		node.Security = Tls
 	case "anytls":
 		rsp := &AnyTlsNode{}
-		err = json.Unmarshal(r.Body(), rsp)
+		err = json.Unmarshal(body, rsp)
 		if err != nil {
 			return nil, fmt.Errorf("decode anytls params error: %s", err)
 		}
@@ -246,7 +238,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		node.Security = Tls
 	case "hysteria":
 		rsp := &HysteriaNode{}
-		err = json.Unmarshal(r.Body(), rsp)
+		err = json.Unmarshal(body, rsp)
 		if err != nil {
 			return nil, fmt.Errorf("decode hysteria params error: %s", err)
 		}
@@ -255,7 +247,7 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		node.Security = Tls
 	case "hysteria2":
 		rsp := &Hysteria2Node{}
-		err = json.Unmarshal(r.Body(), rsp)
+		err = json.Unmarshal(body, rsp)
 		if err != nil {
 			return nil, fmt.Errorf("decode hysteria2 params error: %s", err)
 		}
