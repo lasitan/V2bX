@@ -19,6 +19,10 @@ env:
 jobs:
   build-and-push:
     runs-on: [self-hosted, Linux, X64]
+    env:
+      http_proxy: ""
+      https_proxy: ""
+      no_proxy: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v4

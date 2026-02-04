@@ -19,6 +19,10 @@ permissions:
 jobs:
   build-binaries:
     runs-on: [self-hosted, Linux, X64]
+    env:
+      http_proxy: ""
+      https_proxy: ""
+      no_proxy: ""
     strategy:
       fail-fast: false
       matrix:
