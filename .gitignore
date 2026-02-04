@@ -15,4 +15,4 @@ example/cert
 output/
 .idea/*
 newV2bX.sh
-build_assets/*
+build/*
