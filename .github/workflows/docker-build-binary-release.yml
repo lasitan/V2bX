@@ -17,20 +17,8 @@ permissions:
   contents: write
 
 jobs:
-  build-binaries:
-    runs-on: [self-hosted, Linux, X64]
-    env:
-      http_proxy: ""
-      https_proxy: ""
-      no_proxy: ""
-    strategy:
-      fail-fast: false
-      matrix:
-        include:
-          - platform: linux/amd64
-            asset_arch: "64"
-          - platform: linux/arm64
-            asset_arch: "arm64-v8a"
+  build-linux-amd64:
+    runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -46,56 +34,38 @@ jobs:
             echo "tag=${{ github.ref_name }}" >> "$GITHUB_OUTPUT"
           fi
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build builder stage and export
+      - name: Build (linux/amd64) and export binary
         uses: docker/build-push-action@v6
         with:
           context: .
           target: artifact
-          platforms: ${{ matrix.platform }}
-          outputs: type=local,dest=dist/${{ matrix.platform }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          platforms: linux/amd64
+          outputs: type=local,dest=dist/linux-amd64
 
-      - name: Package release zip
+      - name: Prepare asset
         run: |
           set -euo pipefail
           mkdir -p release_out
-          bin_path="dist/${{ matrix.platform }}/V2bX"
-          if [ ! -f "${bin_path}" ]; then
-            bin_path="dist/${{ matrix.platform }}/app/V2bX"
-          fi
-          if [ ! -f "${bin_path}" ]; then
-            echo "V2bX binary not found under dist/${{ matrix.platform }}" >&2
-            find "dist/${{ matrix.platform }}" -maxdepth 4 -type f -print || true
+          if [ ! -f dist/linux-amd64/V2bX ]; then
+            echo "V2bX binary not found under dist/linux-amd64" >&2
+            find dist/linux-amd64 -maxdepth 4 -type f -print || true
             exit 1
           fi
-          work_dir="work/${{ matrix.platform }}"
-          rm -rf "${work_dir}"
-          mkdir -p "${work_dir}"
+          cp dist/linux-amd64/V2bX release_out/V2bX-linux-amd64
+          chmod +x release_out/V2bX-linux-amd64
 
-          cp "${bin_path}" "${work_dir}/V2bX"
-          chmod +x "${work_dir}/V2bX"
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: V2bX-linux-amd64
+          path: release_out/V2bX-linux-amd64
 
-          cp "example/config.json" "${work_dir}/config.json"
-          cp "example/dns.json" "${work_dir}/dns.json"
-          cp "example/route.json" "${work_dir}/route.json"
-          cp "example/custom_outbound.json" "${work_dir}/custom_outbound.json"
-          cp "example/custom_inbound.json" "${work_dir}/custom_inbound.json"
-
-          curl -fsSL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geoip.dat" -o "${work_dir}/geoip.dat"
-          curl -fsSL "https://raw.githubusercontent.com/Loyalsoldier/v2ray-rules-dat/release/geosite.dat" -o "${work_dir}/geosite.dat"
-
-          pkg="V2bX-linux-${{ matrix.asset_arch }}.zip"
-          (cd "${work_dir}" && zip -9r "${GITHUB_WORKSPACE}/release_out/${pkg}" .)
-
-      - name: Upload assets to release
+      - name: Upload asset to release
+        if: startsWith(github.ref, 'refs/tags/') || github.event_name == 'release' || github.event_name == 'workflow_dispatch'
         uses: softprops/action-gh-release@v2
         with:
           tag_name: ${{ steps.tag.outputs.tag }}
-          files: release_out/*
+          files: release_out/V2bX-linux-amd64
