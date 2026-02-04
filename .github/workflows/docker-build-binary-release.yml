@@ -55,6 +55,8 @@ jobs:
           target: artifact
           platforms: ${{ matrix.platform }}
           outputs: type=local,dest=dist/${{ matrix.platform }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
 
       - name: Package release zip
         run: |
