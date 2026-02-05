@@ -12,13 +12,13 @@ require (
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/go-acme/lego/v4 v4.25.2
 	github.com/go-resty/resty/v2 v2.16.5
+	github.com/gorilla/websocket v1.5.3
 	github.com/juju/ratelimit v1.0.2
 	github.com/sagernet/sing v0.7.6
 	github.com/sagernet/sing-box v1.13.0
 	github.com/sirupsen/logrus v1.9.3
 	github.com/spf13/cobra v1.9.1
 	github.com/spf13/viper v1.19.0
-	github.com/vmihailenco/msgpack/v5 v5.4.1
 	github.com/xtls/xray-core v1.250911.1-0.20250911134820-83c5370eec69
 	go.uber.org/zap v1.27.0
 	golang.org/x/crypto v0.42.0
@@ -144,7 +144,6 @@ require (
 	github.com/gophercloud/utils v0.0.0-20231010081019-80377eca5d56 // indirect
 	github.com/gorilla/csrf v1.7.3-0.20250123201450-9dd6af1f6d30 // indirect
 	github.com/gorilla/securecookie v1.1.2 // indirect
-	github.com/gorilla/websocket v1.5.3 // indirect
 	github.com/hashicorp/go-cleanhttp v0.5.2 // indirect
 	github.com/hashicorp/go-retryablehttp v0.7.8 // indirect
 	github.com/hashicorp/go-uuid v1.0.3 // indirect
@@ -284,7 +283,6 @@ require (
 	github.com/vinyldns/go-vinyldns v0.9.16 // indirect
 	github.com/vishvananda/netlink v1.3.1 // indirect
 	github.com/vishvananda/netns v0.0.5 // indirect
-	github.com/vmihailenco/tagparser/v2 v2.0.0 // indirect
 	github.com/volcengine/volc-sdk-golang v1.0.216 // indirect
 	github.com/vultr/govultr/v3 v3.21.1 // indirect
 	github.com/wyx2685/sing-vmess v0.0.0-20250723121437-95d5ab59ff92 // indirect
