@@ -19,29 +19,19 @@ jobs:
 
       - name: Read version
         id: version
-        shell: python
-        run: |
-          import os
-          import pathlib
-          import sys
-
-          version_file = pathlib.Path('version.md')
-          if not version_file.is_file():
-              print('version.md not found', file=sys.stderr)
-              raise SystemExit(1)
-
-          tag = version_file.read_text(encoding='utf-8', errors='replace').splitlines()[0].strip()
-          if not tag:
-              print('version.md is empty', file=sys.stderr)
-              raise SystemExit(1)
-
-          github_output = os.environ.get('GITHUB_OUTPUT')
-          if not github_output:
-              print('GITHUB_OUTPUT is not set', file=sys.stderr)
-              raise SystemExit(1)
-
-          with open(github_output, 'a', encoding='utf-8') as f:
-              f.write(f"tag={tag}\n")
+        uses: docker://python:3.13-alpine
+        with:
+          args: >-
+            -c
+            import os, pathlib, sys;
+            p=pathlib.Path('version.md');
+            (p.is_file() or (print('version.md not found', file=sys.stderr) or True) and sys.exit(1));
+            lines=p.read_text(encoding='utf-8', errors='replace').splitlines();
+            tag=(lines[0].strip() if lines else '');
+            (tag or (print('version.md is empty', file=sys.stderr) or True) and sys.exit(1));
+            out=os.environ.get('GITHUB_OUTPUT');
+            (out or (print('GITHUB_OUTPUT is not set', file=sys.stderr) or True) and sys.exit(1));
+            open(out,'a',encoding='utf-8').write(f'tag={tag}\n');
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -57,30 +47,27 @@ jobs:
           cache-to: type=gha,mode=max
 
       - name: Package release asset
-        run: |
-          set -euo pipefail
-
-          mkdir -p release_out/pkg
-          cp dist/linux-amd64/app/V2bX release_out/pkg/V2bX
-          chmod +x release_out/pkg/V2bX
-
-          cp ./example/geoip.dat ./example/geosite.dat release_out/pkg/
-          cp ./example/config.json ./example/dns.json ./example/route.json release_out/pkg/
-          cp ./example/custom_outbound.json ./example/custom_inbound.json release_out/pkg/
-
-          python3 - <<'PY'
-          import os
-          import zipfile
-
-          base_dir = 'release_out/pkg'
-          out_zip = 'release_out/V2bX-linux-64.zip'
-          with zipfile.ZipFile(out_zip, 'w', compression=zipfile.ZIP_DEFLATED) as z:
-              for name in os.listdir(base_dir):
-                  path = os.path.join(base_dir, name)
-                  if os.path.isfile(path):
-                      z.write(path, arcname=name)
-          print('created', out_zip)
-          PY
+        uses: docker://python:3.13-alpine
+        with:
+          args: >-
+            -c
+            import os, pathlib, shutil, sys, zipfile;
+            out_dir=pathlib.Path('release_out');
+            pkg_dir=out_dir/'pkg';
+            pkg_dir.mkdir(parents=True, exist_ok=True);
+            src=pathlib.Path('dist/linux-amd64/app/V2bX');
+            (src.is_file() or (print(f'missing binary: {src}', file=sys.stderr) or True) and sys.exit(1));
+            shutil.copy2(src, pkg_dir/'V2bX');
+            for name in ['geoip.dat','geosite.dat','config.json','dns.json','route.json','custom_outbound.json','custom_inbound.json']:
+              p=pathlib.Path('example')/name;
+              (p.is_file() or (print(f'missing file: {p}', file=sys.stderr) or True) and sys.exit(1));
+              shutil.copy2(p, pkg_dir/name);
+            out_zip=out_dir/'V2bX-linux-64.zip';
+            with zipfile.ZipFile(out_zip,'w',compression=zipfile.ZIP_DEFLATED) as z:
+              for p in sorted(pkg_dir.iterdir()):
+                if p.is_file():
+                  z.write(p, arcname=p.name);
+            print('created', str(out_zip));
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
