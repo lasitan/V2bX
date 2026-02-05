@@ -18,7 +18,7 @@ permissions:
 
 jobs:
   build-linux-amd64:
-    runs-on: ubuntu-latest
+    runs-on: [self-hosted, Linux, X64]
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -37,25 +37,23 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build (linux/amd64) and export binary
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          target: artifact
-          platforms: linux/amd64
-          outputs: type=local,dest=dist/linux-amd64
-
-      - name: Prepare asset
+      - name: Build and export binary
         run: |
           set -euo pipefail
+          docker build --target builder -t v2bx-builder .
+          docker create --name v2bx_tmp v2bx-builder
+          docker cp v2bx_tmp:/app/V2bX ./V2bX
+          docker rm v2bx_tmp
+
           mkdir -p release_out
-          if [ ! -f dist/linux-amd64/V2bX ]; then
-            echo "V2bX binary not found under dist/linux-amd64" >&2
-            find dist/linux-amd64 -maxdepth 4 -type f -print || true
-            exit 1
-          fi
-          cp dist/linux-amd64/V2bX release_out/V2bX-linux-amd64
+          cp ./V2bX release_out/V2bX-linux-amd64
           chmod +x release_out/V2bX-linux-amd64
+
+      - name: Cleanup docker artifacts
+        if: always()
+        run: |
+          docker rm -f v2bx_tmp 2>/dev/null || true
+          docker image rm -f v2bx-builder 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
