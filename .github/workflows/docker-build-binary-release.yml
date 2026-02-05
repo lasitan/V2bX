@@ -23,16 +23,7 @@ jobs:
         with:
           args: >-
             python3
-            -c
-            import os, pathlib, sys;
-            p=pathlib.Path('version.md');
-            (p.is_file() or (print('version.md not found', file=sys.stderr) or True) and sys.exit(1));
-            lines=p.read_text(encoding='utf-8', errors='replace').splitlines();
-            tag=(lines[0].strip() if lines else '');
-            (tag or (print('version.md is empty', file=sys.stderr) or True) and sys.exit(1));
-            out=os.environ.get('GITHUB_OUTPUT');
-            (out or (print('GITHUB_OUTPUT is not set', file=sys.stderr) or True) and sys.exit(1));
-            open(out,'a',encoding='utf-8').write(f'tag={tag}\n');
+            .github/ci/read_version.py
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -52,24 +43,7 @@ jobs:
         with:
           args: >-
             python3
-            -c
-            import os, pathlib, shutil, sys, zipfile;
-            out_dir=pathlib.Path('release_out');
-            pkg_dir=out_dir/'pkg';
-            pkg_dir.mkdir(parents=True, exist_ok=True);
-            src=pathlib.Path('dist/linux-amd64/app/V2bX');
-            (src.is_file() or (print(f'missing binary: {src}', file=sys.stderr) or True) and sys.exit(1));
-            shutil.copy2(src, pkg_dir/'V2bX');
-            for name in ['geoip.dat','geosite.dat','config.json','dns.json','route.json','custom_outbound.json','custom_inbound.json']:
-              p=pathlib.Path('example')/name;
-              (p.is_file() or (print(f'missing file: {p}', file=sys.stderr) or True) and sys.exit(1));
-              shutil.copy2(p, pkg_dir/name);
-            out_zip=out_dir/'V2bX-linux-64.zip';
-            with zipfile.ZipFile(out_zip,'w',compression=zipfile.ZIP_DEFLATED) as z:
-              for p in sorted(pkg_dir.iterdir()):
-                if p.is_file():
-                  z.write(p, arcname=p.name);
-            print('created', str(out_zip));
+            .github/ci/package_release.py
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
