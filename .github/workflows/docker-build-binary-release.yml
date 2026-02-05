@@ -11,24 +11,37 @@ permissions:
 jobs:
   build-linux-amd64:
     runs-on: [self-hosted, Linux, X64]
+    env:
+      BASH_ENV: ""
     steps:
       - name: Checkout
         uses: actions/checkout@v4
 
       - name: Read version
         id: version
+        shell: python
         run: |
-          set -euo pipefail
-          if [ ! -f version.md ]; then
-            echo "version.md not found" >&2
-            exit 1
-          fi
-          TAG="$(head -n 1 version.md | tr -d '\r' | xargs)"
-          if [ -z "$TAG" ]; then
-            echo "version.md is empty" >&2
-            exit 1
-          fi
-          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+          import os
+          import pathlib
+          import sys
+
+          version_file = pathlib.Path('version.md')
+          if not version_file.is_file():
+              print('version.md not found', file=sys.stderr)
+              raise SystemExit(1)
+
+          tag = version_file.read_text(encoding='utf-8', errors='replace').splitlines()[0].strip()
+          if not tag:
+              print('version.md is empty', file=sys.stderr)
+              raise SystemExit(1)
+
+          github_output = os.environ.get('GITHUB_OUTPUT')
+          if not github_output:
+              print('GITHUB_OUTPUT is not set', file=sys.stderr)
+              raise SystemExit(1)
+
+          with open(github_output, 'a', encoding='utf-8') as f:
+              f.write(f"tag={tag}\n")
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
