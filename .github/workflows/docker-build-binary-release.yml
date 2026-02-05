@@ -37,16 +37,22 @@ jobs:
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Build and export binary
+      - name: Build (linux/amd64) and export builder filesystem
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          target: builder
+          platforms: linux/amd64
+          outputs: type=local,dest=dist/linux-amd64
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Package release asset
         run: |
           set -euo pipefail
-          docker build --target builder -t v2bx-builder .
-          docker create --name v2bx_tmp v2bx-builder
-          docker cp v2bx_tmp:/app/V2bX ./V2bX
-          docker rm v2bx_tmp
 
           mkdir -p release_out/pkg
-          cp ./V2bX release_out/pkg/V2bX
+          cp dist/linux-amd64/app/V2bX release_out/pkg/V2bX
           chmod +x release_out/pkg/V2bX
 
           cp ./example/geoip.dat ./example/geosite.dat release_out/pkg/
@@ -66,12 +72,6 @@ jobs:
                       z.write(path, arcname=name)
           print('created', out_zip)
           PY
-
-      - name: Cleanup docker artifacts
-        if: always()
-        run: |
-          docker rm -f v2bx_tmp 2>/dev/null || true
-          docker image rm -f v2bx-builder 2>/dev/null || true
 
       - name: Upload artifact
         uses: actions/upload-artifact@v4
