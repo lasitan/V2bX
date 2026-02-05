@@ -22,6 +22,7 @@ jobs:
         uses: docker://python:3.13-alpine
         with:
           args: >-
+            python3
             -c
             import os, pathlib, sys;
             p=pathlib.Path('version.md');
@@ -50,6 +51,7 @@ jobs:
         uses: docker://python:3.13-alpine
         with:
           args: >-
+            python3
             -c
             import os, pathlib, shutil, sys, zipfile;
             out_dir=pathlib.Path('release_out');
