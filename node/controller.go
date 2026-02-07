@@ -43,6 +43,17 @@ func NewController(server vCore.Core, api *panel.Client, config *conf.Options) *
 func (c *Controller) Start() error {
 	// First fetch Node Info
 	var err error
+	defer func() {
+		if err == nil {
+			return
+		}
+		// Best-effort cleanup for retryable startup.
+		if c.tag != "" {
+			limiter.DeleteLimiter(c.tag)
+			_ = c.server.DelNode(c.tag)
+		}
+	}()
+
 	node, err := c.apiClient.GetNodeInfo()
 	if err != nil {
 		return fmt.Errorf("get node info error: %s", err)
@@ -99,7 +110,9 @@ func (c *Controller) Start() error {
 
 // Close implement the Close() function of the service interface
 func (c *Controller) Close() error {
-	limiter.DeleteLimiter(c.tag)
+	if c.tag != "" {
+		limiter.DeleteLimiter(c.tag)
+	}
 	if c.nodeInfoMonitorPeriodic != nil {
 		c.nodeInfoMonitorPeriodic.Close()
 	}
@@ -115,9 +128,11 @@ func (c *Controller) Close() error {
 	if c.onlineIpReportPeriodic != nil {
 		c.onlineIpReportPeriodic.Close()
 	}
-	err := c.server.DelNode(c.tag)
-	if err != nil {
-		return fmt.Errorf("del node error: %s", err)
+	if c.tag != "" {
+		err := c.server.DelNode(c.tag)
+		if err != nil {
+			return fmt.Errorf("del node error: %s", err)
+		}
 	}
 	return nil
 }
