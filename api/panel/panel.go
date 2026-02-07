@@ -21,6 +21,10 @@ import (
 type Client struct {
 	client           *resty.Client
 	APIHost          string
+	WSURL            string
+	WSScheme         string
+	WSHost           string
+	WSPort           int
 	Token            string
 	NodeType         string
 	NodeId           int
@@ -85,6 +89,10 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		client:   client,
 		Token:    c.Key,
 		APIHost:  c.APIHost,
+		WSURL:    c.WSURL,
+		WSScheme: c.WSScheme,
+		WSHost:   c.WSHost,
+		WSPort:   c.WSPort,
 		NodeType: c.NodeType,
 		NodeId:   c.NodeID,
 		timeout:  timeout,

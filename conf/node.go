@@ -30,6 +30,10 @@ type ApiConfig struct {
 	NodeType     string `json:"NodeType"`
 	Timeout      int    `json:"Timeout"`
 	RuleListPath string `json:"RuleListPath"`
+	WSScheme     string `json:"WsScheme"`
+	WSHost       string `json:"WsHost"`
+	WSPort       int    `json:"WsPort"`
+	WSURL        string `json:"WsURL"`
 }
 
 func (n *NodeConfig) UnmarshalJSON(data []byte) (err error) {

@@ -96,23 +96,47 @@ func (c *Client) setWsState(s wsState) {
 }
 
 func (c *Client) wsURL(path string) (string, error) {
-	base, err := url.Parse(c.APIHost)
-	if err != nil {
-		return "", err
-	}
-	hostname := base.Hostname()
-	if hostname == "" {
-		return "", fmt.Errorf("invalid ApiHost: %s", c.APIHost)
-	}
-	scheme := "ws"
-	if strings.EqualFold(base.Scheme, "https") {
-		scheme = "wss"
-	}
-
-	wsu := &url.URL{
-		Scheme: scheme,
-		Host:   fmt.Sprintf("%s:%d", hostname, 51821),
-		Path:   path,
+	// Optional override:
+	// - If WSURL is provided, it must include scheme and host (port optional).
+	// - Otherwise, WsScheme/WsHost/WsPort can be provided partially.
+	wsu := &url.URL{Path: path}
+	if c.WSURL != "" {
+		base, err := url.Parse(c.WSURL)
+		if err != nil {
+			return "", err
+		}
+		wsu.Scheme = base.Scheme
+		wsu.Host = base.Host
+		// If configured URL includes a path prefix, respect it by joining with requested path.
+		if base.Path != "" && base.Path != "/" {
+			wsu.Path = strings.TrimRight(base.Path, "/") + path
+		}
+	} else {
+		apiBase, err := url.Parse(c.APIHost)
+		if err != nil {
+			return "", err
+		}
+		hostname := apiBase.Hostname()
+		if hostname == "" {
+			return "", fmt.Errorf("invalid ApiHost: %s", c.APIHost)
+		}
+		scheme := "ws"
+		if strings.EqualFold(apiBase.Scheme, "https") {
+			scheme = "wss"
+		}
+		if c.WSScheme != "" {
+			scheme = c.WSScheme
+		}
+		host := hostname
+		if c.WSHost != "" {
+			host = c.WSHost
+		}
+		port := 51821
+		if c.WSPort > 0 {
+			port = c.WSPort
+		}
+		wsu.Scheme = scheme
+		wsu.Host = fmt.Sprintf("%s:%d", host, port)
 	}
 
 	q := wsu.Query()
