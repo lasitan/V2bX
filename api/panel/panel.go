@@ -5,9 +5,11 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 
 	"github.com/InazumaV/V2bX/conf"
@@ -26,6 +28,8 @@ type Client struct {
 	queryParams      map[string]string
 	wsState          int32
 	wsLastFailUnixNs int64
+	wsConnMu         sync.Mutex
+	wsConn           *websocket.Conn
 	nodeEtag         string
 	userEtag         string
 	responseBodyHash string
@@ -99,4 +103,7 @@ func New(c *conf.ApiConfig) (*Client, error) {
 
 func (c *Client) disableWS() {
 	atomic.StoreInt32(&c.wsState, int32(wsStateUnavailable))
+	c.wsConnMu.Lock()
+	c.closeWSConnLocked()
+	c.wsConnMu.Unlock()
 }

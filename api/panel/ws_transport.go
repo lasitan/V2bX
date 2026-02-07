@@ -37,6 +37,40 @@ type wsResponse struct {
 	Body       []byte              `json:"body,omitempty"`
 }
 
+func (c *Client) closeWSConnLocked() {
+	if c.wsConn != nil {
+		_ = c.wsConn.Close()
+		c.wsConn = nil
+	}
+}
+
+func (c *Client) ensureWSConnLocked(ctx context.Context, headers map[string]string, path string) error {
+	if c.wsConn != nil {
+		return nil
+	}
+	wsURL, err := c.wsURL(path)
+	if err != nil {
+		return err
+	}
+
+	dialer := websocket.Dialer{}
+	if strings.HasPrefix(wsURL, "wss://") {
+		dialer.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
+	}
+
+	h := http.Header{}
+	for k, v := range headers {
+		h.Set(k, v)
+	}
+
+	conn, _, err := dialer.DialContext(ctx, wsURL, h)
+	if err != nil {
+		return err
+	}
+	c.wsConn = conn
+	return nil
+}
+
 func (c *Client) wsEnabled() bool {
 	state := wsState(atomic.LoadInt32(&c.wsState))
 	if state != wsStateUnavailable {
@@ -90,48 +124,55 @@ func (c *Client) wsURL(path string) (string, error) {
 }
 
 func (c *Client) doWS(ctx context.Context, method, path string, headers map[string]string, body []byte) (*wsResponse, error) {
-	wsURL, err := c.wsURL(path)
-	if err != nil {
-		return nil, err
-	}
-
-	dialer := websocket.Dialer{}
-	if strings.HasPrefix(wsURL, "wss://") {
-		dialer.TLSClientConfig = &tls.Config{MinVersion: tls.VersionTLS12}
-	}
-
-	h := http.Header{}
-	for k, v := range headers {
-		h.Set(k, v)
-	}
-
 	req := wsRequest{
 		Method:  method,
 		Path:    path,
 		Headers: make(map[string][]string, len(headers)),
 		Body:    body,
 	}
-	for k, v := range h {
-		req.Headers[k] = v
+	for k, v := range headers {
+		req.Headers[k] = []string{v}
 	}
-
-	conn, _, err := dialer.DialContext(ctx, wsURL, h)
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
 
 	payload, err := json.Marshal(req)
 	if err != nil {
 		return nil, err
 	}
-	if err := conn.WriteMessage(websocket.TextMessage, payload); err != nil {
-		return nil, err
+
+	c.wsConnMu.Lock()
+	defer c.wsConnMu.Unlock()
+
+	tryOnce := func() ([]byte, error) {
+		if err := c.ensureWSConnLocked(ctx, headers, path); err != nil {
+			return nil, err
+		}
+		if d, ok := ctx.Deadline(); ok {
+			_ = c.wsConn.SetWriteDeadline(d)
+			_ = c.wsConn.SetReadDeadline(d)
+		}
+		if err := c.wsConn.WriteMessage(websocket.TextMessage, payload); err != nil {
+			c.closeWSConnLocked()
+			return nil, err
+		}
+		_, respPayload, err := c.wsConn.ReadMessage()
+		if err != nil {
+			c.closeWSConnLocked()
+			return nil, err
+		}
+		if _, ok := ctx.Deadline(); ok {
+			_ = c.wsConn.SetWriteDeadline(time.Time{})
+			_ = c.wsConn.SetReadDeadline(time.Time{})
+		}
+		return respPayload, nil
 	}
 
-	_, respPayload, err := conn.ReadMessage()
+	respPayload, err := tryOnce()
 	if err != nil {
-		return nil, err
+		// Reconnect once and retry the same request.
+		respPayload, err = tryOnce()
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	var resp wsResponse
