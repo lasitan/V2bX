@@ -2,6 +2,8 @@ package node
 
 import (
 	"fmt"
+	"net/url"
+	"strings"
 	"sync"
 	"time"
 
@@ -39,7 +41,7 @@ func (n *Node) Start(nodes []conf.NodeConfig, core vCore.Core) error {
 				"node_type": nodes[i].ApiConfig.NodeType,
 				"node_id":   nodes[i].ApiConfig.NodeID,
 				"err":       err,
-			}).Error("panel client init failed, skip this node")
+			}).Error("面板客户端初始化失败，已跳过该节点")
 			continue
 		}
 		c := NewController(core, p, &nodes[i].Options)
@@ -48,6 +50,50 @@ func (n *Node) Start(nodes []conf.NodeConfig, core vCore.Core) error {
 		apiHost := nodes[i].ApiConfig.APIHost
 		nodeType := nodes[i].ApiConfig.NodeType
 		nodeID := nodes[i].ApiConfig.NodeID
+
+		wsMode := "default"
+		wsEndpoint := ""
+		if nodes[i].ApiConfig.WSURL != "" {
+			wsMode = "ws_url"
+			if u, err := url.Parse(nodes[i].ApiConfig.WSURL); err == nil {
+				base := &url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}
+				wsEndpoint = base.String()
+			} else {
+				wsEndpoint = nodes[i].ApiConfig.WSURL
+			}
+		} else {
+			if nodes[i].ApiConfig.WSScheme != "" || nodes[i].ApiConfig.WSHost != "" || nodes[i].ApiConfig.WSPort > 0 {
+				wsMode = "ws_parts"
+			}
+			apiBase, err := url.Parse(apiHost)
+			if err == nil {
+				scheme := "ws"
+				if strings.EqualFold(apiBase.Scheme, "https") {
+					scheme = "wss"
+				}
+				if nodes[i].ApiConfig.WSScheme != "" {
+					scheme = nodes[i].ApiConfig.WSScheme
+				}
+				host := apiBase.Hostname()
+				if nodes[i].ApiConfig.WSHost != "" {
+					host = nodes[i].ApiConfig.WSHost
+				}
+				port := 51821
+				if nodes[i].ApiConfig.WSPort > 0 {
+					port = nodes[i].ApiConfig.WSPort
+				}
+				wsEndpoint = fmt.Sprintf("%s://%s:%d", scheme, host, port)
+			}
+		}
+
+		log.WithFields(log.Fields{
+			"api_host": apiHost,
+			"ws_mode":  wsMode,
+			"ws":       wsEndpoint,
+			"node_type": nodeType,
+			"node_id":   nodeID,
+		}).Info("面板端点")
+
 		n.wg.Add(1)
 		go func(ctrl *Controller) {
 			defer n.wg.Done()
@@ -56,10 +102,10 @@ func (n *Node) Start(nodes []conf.NodeConfig, core vCore.Core) error {
 			for {
 				err := ctrl.Start()
 				if err == nil {
-					log.WithField("node", id).Info("node controller started")
+					log.WithField("node", id).Info("节点控制器启动成功")
 					return
 				}
-				log.WithFields(log.Fields{"node": id, "err": err}).Error("node controller start failed, will retry")
+				log.WithFields(log.Fields{"node": id, "err": err}).Error("节点控制器启动失败，将重试")
 				select {
 				case <-n.closeCh:
 					return
@@ -90,7 +136,7 @@ func (n *Node) Close() {
 			continue
 		}
 		if err := c.Close(); err != nil {
-			log.WithFields(log.Fields{"tag": c.tag, "err": err}).Error("close node controller failed")
+			log.WithFields(log.Fields{"tag": c.tag, "err": err}).Error("关闭节点控制器失败")
 		}
 	}
 	n.controllers = nil

@@ -14,6 +14,7 @@ import (
 
 	"github.com/gorilla/websocket"
 	"github.com/go-resty/resty/v2"
+	"github.com/sirupsen/logrus"
 )
 
 type wsState int32
@@ -217,9 +218,29 @@ func (c *Client) doRequest(method, path string, headers map[string]string, body 
 		resp, wsErr := c.doWS(ctx, method, path, headers, body)
 		if wsErr == nil {
 			c.setWsState(wsStateAvailable)
+			c.wsTransportLogOnce.Do(func() {
+				logrus.WithFields(logrus.Fields{
+					"api_host":  c.APIHost,
+					"node_type": c.NodeType,
+					"node_id":   c.NodeId,
+					"transport": "ws",
+					"method":    strings.ToUpper(method),
+					"path":      path,
+					"status":    resp.StatusCode,
+				}).Info("面板通信使用 WS")
+			})
 			return resp.StatusCode, resp.Headers, resp.Body, true, nil
 		}
 		c.setWsState(wsStateUnavailable)
+		logrus.WithFields(logrus.Fields{
+			"api_host":  c.APIHost,
+			"node_type": c.NodeType,
+			"node_id":   c.NodeId,
+			"transport": "ws",
+			"method":    strings.ToUpper(method),
+			"path":      path,
+			"err":       wsErr,
+		}).Warn("面板 WS 通信失败，回退到 HTTP")
 	}
 
 	r := c.client.R()
@@ -245,6 +266,17 @@ func (c *Client) doRequest(method, path string, headers map[string]string, body 
 	if resp == nil {
 		return 0, nil, nil, false, fmt.Errorf("received nil response")
 	}
+	c.httpTransportLogOnce.Do(func() {
+		logrus.WithFields(logrus.Fields{
+			"api_host":  c.APIHost,
+			"node_type": c.NodeType,
+			"node_id":   c.NodeId,
+			"transport": "http",
+			"method":    strings.ToUpper(method),
+			"path":      path,
+			"status":    resp.StatusCode(),
+		}).Debug("面板通信使用 HTTP")
+	})
 	return resp.StatusCode(), resp.Header(), resp.Body(), false, nil
 }
 

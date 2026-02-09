@@ -3,7 +3,8 @@ FROM golang:1.25.0-alpine AS builder
 WORKDIR /app
 COPY . .
 ENV CGO_ENABLED=0
-
+ARG PROXY=https://goproxy.cn,direct
+ENV GOPROXY=${PROXY}
 ARG GOSUMDB=off
 ENV GOSUMDB=${GOSUMDB}
 

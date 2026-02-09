@@ -28,6 +28,8 @@ type Client struct {
 	Token            string
 	NodeType         string
 	NodeId           int
+	wsTransportLogOnce   sync.Once
+	httpTransportLogOnce sync.Once
 	timeout          time.Duration
 	queryParams      map[string]string
 	wsState          int32
