@@ -284,7 +284,6 @@ EOF
     echo "V2bX uninstall    - 卸载 V2bX"
     echo "V2bX version      - 查看 V2bX 版本"
     echo "------------------------------------------"
-    curl -fsS --max-time 10 "https://api.v-50.me/counter_v2bx" || true
     # 首次安装询问是否生成配置文件
     if [[ $first_install == true ]]; then
         read -rp "检测到你为第一次安装V2bX,是否自动直接生成配置文件？(y/n): " if_generate
