@@ -8,8 +8,8 @@ ENV GOPROXY=${PROXY}
 ARG GOSUMDB=off
 ENV GOSUMDB=${GOSUMDB}
 
-RUN GOEXPERIMENT=jsonv2 go mod download
-RUN GOEXPERIMENT=jsonv2 go build -v -o V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor"
+RUN go mod download
+RUN go build -v -o V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor"
 
 # Release
 FROM  alpine
