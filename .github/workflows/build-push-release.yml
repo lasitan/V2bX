@@ -1,0 +1,123 @@
+name: Build, Package and Release
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: [self-hosted, Linux, X64]
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n\t ' < .github/build/version.txt)"
+          if [ -z "$VERSION" ]; then
+            echo "version.txt is empty" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" == v* ]]; then
+            TAG="$VERSION"
+          else
+            TAG="v$VERSION"
+          fi
+          echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Build all targets
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p dist/binaries dist/archives
+
+          VERSION='${{ steps.version.outputs.version }}'
+
+          json_file='.github/build/friendly-filenames.json'
+          for key in $(jq -r 'keys[]' "$json_file"); do
+            friendly=$(jq -r --arg k "$key" '.[$k].friendlyName' "$json_file")
+            os="${key%%-*}"
+            arch_variant="${key#*-}"
+
+            GOOS="$os"
+            GOARCH="$arch_variant"
+            unset GOARM || true
+            unset GOMIPS || true
+
+            case "$arch_variant" in
+              arm5)
+                GOARCH=arm
+                GOARM=5
+                ;;
+              arm6)
+                GOARCH=arm
+                GOARM=6
+                ;;
+              arm7)
+                GOARCH=arm
+                GOARM=7
+                ;;
+              mipssoftfloat)
+                GOARCH=mips
+                GOMIPS=softfloat
+                ;;
+              mipslesoftfloat)
+                GOARCH=mipsle
+                GOMIPS=softfloat
+                ;;
+              *)
+                ;;
+            esac
+
+            ext=""
+            if [ "$GOOS" = "windows" ]; then
+              ext=".exe"
+            fi
+
+            out_name="V2bX-${friendly}${ext}"
+            out_path="dist/binaries/${out_name}"
+
+            echo "Building ${key} -> ${out_name}"
+
+            env_vars=("GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=0")
+            if [ -n "${GOARM:-}" ]; then
+              env_vars+=("GOARM=$GOARM")
+            fi
+            if [ -n "${GOMIPS:-}" ]; then
+              env_vars+=("GOMIPS=$GOMIPS")
+            fi
+
+            env "${env_vars[@]}" go build -trimpath -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
+
+            if [ "$GOOS" = "windows" ]; then
+              (cd dist/binaries && zip -q -9 "../archives/${out_name}.zip" "${out_name}")
+            else
+              tar -C dist/binaries -czf "dist/archives/${out_name}.tar.gz" "${out_name}"
+            fi
+          done
+
+      - name: Create/Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.version.outputs.tag }}
+          name: ${{ steps.version.outputs.tag }}
+          draft: false
+          prerelease: false
+          fail_on_unmatched_files: true
+          files: |
+            dist/archives/*
