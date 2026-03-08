@@ -14,6 +14,9 @@ permissions:
 jobs:
   build-and-release:
     runs-on: [self-hosted, Linux, X64]
+    env:
+      GOMODCACHE: ${{ github.workspace }}/.go-cache/pkg/mod
+      GOCACHE: ${{ github.workspace }}/.go-cache/build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -22,7 +25,8 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          rm -rf "$HOME/go/pkg/mod" "$HOME/.cache/go-build"
+          rm -rf "$GOMODCACHE" "$GOCACHE"
+          mkdir -p "$GOMODCACHE" "$GOCACHE"
 
       - name: Set up Go
         uses: actions/setup-go@v5
