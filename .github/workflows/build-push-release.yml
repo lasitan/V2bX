@@ -18,6 +18,12 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Clean Go cache
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf "$HOME/go/pkg/mod" "$HOME/.cache/go-build"
+
       - name: Set up Go
         uses: actions/setup-go@v5
         with:
