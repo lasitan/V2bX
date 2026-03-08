@@ -47,6 +47,7 @@ jobs:
         run: |
           set -euo pipefail
           mkdir -p dist/binaries dist/archives
+          mkdir -p dist/package
 
           VERSION='${{ steps.version.outputs.version }}'
 
@@ -106,10 +107,21 @@ jobs:
 
             env "${env_vars[@]}" go build -trimpath -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
 
+            pkg_dir="dist/package/${friendly}"
+            rm -rf "$pkg_dir"
+            mkdir -p "$pkg_dir"
+
+            pkg_bin_name="V2bX${ext}"
+            cp "$out_path" "$pkg_dir/$pkg_bin_name"
+
+            if [ -d "example" ]; then
+              cp -a "example/." "$pkg_dir/"
+            fi
+
             if [ "$GOOS" = "windows" ]; then
-              (cd dist/binaries && zip -q -9 "../archives/${out_name}.zip" "${out_name}")
+              (cd "$pkg_dir" && zip -q -9 "../../archives/${out_name}.zip" ./*)
             else
-              tar -C dist/binaries -czf "dist/archives/${out_name}.tar.gz" "${out_name}"
+              tar -C "$pkg_dir" -czf "dist/archives/${out_name}.tar.gz" .
             fi
           done
 
