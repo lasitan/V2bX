@@ -10,7 +10,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"encoding/json/v2"
+	"encoding/json"
 
 	"github.com/gorilla/websocket"
 	"github.com/go-resty/resty/v2"

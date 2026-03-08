@@ -1,8 +1,8 @@
 package panel
 
 import (
+	"encoding/json"
 	"fmt"
-	"encoding/json/v2"
 )
 
 type OnlineUser struct {
