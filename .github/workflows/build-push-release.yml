@@ -4,6 +4,8 @@ on:
   push:
     branches:
       - main
+    paths:
+      - '.github/build/version.txt'
   workflow_dispatch:
 
 permissions:

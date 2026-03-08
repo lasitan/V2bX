@@ -130,30 +130,44 @@ install_V2bX() {
     cd /usr/local/V2bX/
 
     if  [ $# == 0 ] ;then
-        last_version=$(curl -Ls "https://api.github.com/repos/lasitan/V2bX/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
+        last_version=$(curl -4Ls "https://api.github.com/repos/lasitan/V2bX/releases/latest" | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/')
         if [[ ! -n "$last_version" ]]; then
             echo -e "${red}检测 V2bX 版本失败，可能是超出 Github API 限制，请稍后再试，或手动指定 V2bX 版本安装${plain}"
             exit 1
         fi
         echo -e "检测到 V2bX 最新版本：${last_version}，开始安装"
-        wget --no-check-certificate -N --progress=bar -O /usr/local/V2bX/V2bX-linux.zip https://github.com/lasitan/V2bX/releases/download/${last_version}/V2bX-linux-${arch}.zip
+        url="https://github.com/lasitan/V2bX/releases/download/${last_version}/V2bX-linux-${arch}.tar.gz"
+        wget -4 --no-check-certificate -N --progress=bar -O /usr/local/V2bX/V2bX-linux.tar.gz ${url}
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 V2bX 失败，请确保你的服务器能够下载 Github 的文件${plain}"
-            exit 1
+            url="https://github.com/lasitan/V2bX/releases/download/${last_version}/V2bX-linux-${arch}.zip"
+            wget -4 --no-check-certificate -N --progress=bar -O /usr/local/V2bX/V2bX-linux.zip ${url}
+            if [[ $? -ne 0 ]]; then
+                echo -e "${red}下载 V2bX 失败，请确保你的服务器能够下载 Github 的文件${plain}"
+                exit 1
+            fi
         fi
     else
         last_version=$1
-        url="https://github.com/lasitan/V2bX/releases/download/${last_version}/V2bX-linux-${arch}.zip"
+        url="https://github.com/lasitan/V2bX/releases/download/${last_version}/V2bX-linux-${arch}.tar.gz"
         echo -e "开始安装 V2bX $1"
-        wget --no-check-certificate -N --progress=bar -O /usr/local/V2bX/V2bX-linux.zip ${url}
+        wget -4 --no-check-certificate -N --progress=bar -O /usr/local/V2bX/V2bX-linux.tar.gz ${url}
         if [[ $? -ne 0 ]]; then
-            echo -e "${red}下载 V2bX $1 失败，请确保此版本存在${plain}"
-            exit 1
+            url="https://github.com/lasitan/V2bX/releases/download/${last_version}/V2bX-linux-${arch}.zip"
+            wget -4 --no-check-certificate -N --progress=bar -O /usr/local/V2bX/V2bX-linux.zip ${url}
+            if [[ $? -ne 0 ]]; then
+                echo -e "${red}下载 V2bX $1 失败，请确保此版本存在${plain}"
+                exit 1
+            fi
         fi
     fi
 
-    unzip V2bX-linux.zip
-    rm V2bX-linux.zip -f
+    if [[ -f /usr/local/V2bX/V2bX-linux.tar.gz ]]; then
+        tar -xzf V2bX-linux.tar.gz
+        rm V2bX-linux.tar.gz -f
+    else
+        unzip V2bX-linux.zip
+        rm V2bX-linux.zip -f
+    fi
     chmod +x V2bX
     mkdir /etc/V2bX/ -p
     cp geoip.dat /etc/V2bX/

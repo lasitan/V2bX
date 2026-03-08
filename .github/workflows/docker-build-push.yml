@@ -5,8 +5,8 @@ on:
   push:
     branches:
       - main
-    tags:
-      - 'v*'
+    paths:
+      - '.github/build/version.txt'
 
 permissions:
   contents: read
@@ -27,6 +27,23 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n\t ' < .github/build/version.txt)"
+          if [ -z "$VERSION" ]; then
+            echo "version.txt is empty" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" == v* ]]; then
+            TAG="$VERSION"
+          else
+            TAG="v$VERSION"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
@@ -39,8 +56,8 @@ jobs:
         with:
           images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
           tags: |
+            type=raw,value=${{ steps.version.outputs.tag }}
             type=ref,event=branch
-            type=ref,event=tag
             type=sha
 
       - name: Login to GitHub Container Registry
