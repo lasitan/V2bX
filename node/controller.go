@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"time"
 
 	"github.com/InazumaV/V2bX/api/panel"
 	"github.com/InazumaV/V2bX/common/task"
@@ -26,6 +27,8 @@ type Controller struct {
 	renewCertPeriodic         *task.Task
 	dynamicSpeedLimitPeriodic *task.Task
 	onlineIpReportPeriodic    *task.Task
+	onlineReportCh            chan struct{}
+	onlineReportStopCh        chan struct{}
 	*conf.Options
 }
 
@@ -83,6 +86,15 @@ func (c *Controller) Start() error {
 		return fmt.Errorf("更新规则失败: %s", err)
 	}
 	c.limiter = l
+	c.onlineReportCh = make(chan struct{}, 1)
+	c.onlineReportStopCh = make(chan struct{})
+	c.limiter.SetOnlineStateHook(func(evt limiter.OnlineStateEvent) {
+		select {
+		case c.onlineReportCh <- struct{}{}:
+		default:
+		}
+	})
+	go c.onlineReportLoop()
 	if node.Security == panel.Tls {
 		err = c.requestCert()
 		if err != nil {
@@ -108,10 +120,59 @@ func (c *Controller) Start() error {
 	return nil
 }
 
+func (c *Controller) onlineReportLoop() {
+	debounce := 300 * time.Millisecond
+	var t *time.Timer
+	var tc <-chan time.Time
+	for {
+		select {
+		case <-c.onlineReportStopCh:
+			if t != nil {
+				t.Stop()
+			}
+			return
+		case <-c.onlineReportCh:
+			if t == nil {
+				t = time.NewTimer(debounce)
+				tc = t.C
+			} else {
+				if !t.Stop() {
+					select {
+					case <-t.C:
+					default:
+					}
+				}
+				t.Reset(debounce)
+			}
+		case <-tc:
+			tc = nil
+			t = nil
+			for {
+				select {
+				case <-c.onlineReportCh:
+				default:
+					goto REPORT
+				}
+			}
+		REPORT:
+			_ = c.reportOnlineUsersNow()
+		}
+	}
+}
+
+func (c *Controller) expireOnlineTask() error {
+	// 15s no activity counts as offline
+	_ = c.limiter.ExpireOnlineBefore(time.Now().Add(-15 * time.Second))
+	return nil
+}
+
 // Close implement the Close() function of the service interface
 func (c *Controller) Close() error {
 	if c.tag != "" {
 		limiter.DeleteLimiter(c.tag)
+	}
+	if c.onlineReportStopCh != nil {
+		close(c.onlineReportStopCh)
 	}
 	if c.nodeInfoMonitorPeriodic != nil {
 		c.nodeInfoMonitorPeriodic.Close()

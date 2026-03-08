@@ -20,16 +20,82 @@ func Init() {
 	limiter = map[string]*Limiter{}
 }
 
+func (l *Limiter) updateOnlineLastSeen(taguuid, ip string, uid int, now time.Time, shouldEmit bool) {
+	newLSMap := new(sync.Map)
+	newLSMap.Store(ip, &OnlineState{UID: uid, LastSeen: now})
+	if v, loaded := l.UserOnlineLS.LoadOrStore(taguuid, newLSMap); loaded {
+		lsMap := v.(*sync.Map)
+		if stAny, loadedIP := lsMap.LoadOrStore(ip, &OnlineState{UID: uid, LastSeen: now}); loadedIP {
+			st := stAny.(*OnlineState)
+			st.UID = uid
+			st.LastSeen = now
+		} else if shouldEmit {
+			l.emitOnlineStateEvent(OnlineStateEvent{UID: uid, IP: ip, Online: true})
+		}
+	} else if shouldEmit {
+		l.emitOnlineStateEvent(OnlineStateEvent{UID: uid, IP: ip, Online: true})
+	}
+}
+
+func (l *Limiter) GetCurrentOnlineDevice() (*[]panel.OnlineUser, error) {
+	var onlineUser []panel.OnlineUser
+	l.UserOnlineLS.Range(func(key, value interface{}) bool {
+		ipMap := value.(*sync.Map)
+		ipMap.Range(func(key, value interface{}) bool {
+			st := value.(*OnlineState)
+			onlineUser = append(onlineUser, panel.OnlineUser{UID: st.UID, IP: key.(string)})
+			return true
+		})
+		return true
+	})
+	return &onlineUser, nil
+}
+
+func (l *Limiter) ExpireOnlineBefore(cutoff time.Time) (expired []OnlineStateEvent) {
+	l.UserOnlineLS.Range(func(key, value interface{}) bool {
+		ipMap := value.(*sync.Map)
+		ipMap.Range(func(ipAny, stAny interface{}) bool {
+			ip := ipAny.(string)
+			st := stAny.(*OnlineState)
+			if st.LastSeen.Before(cutoff) {
+				ipMap.Delete(ip)
+				expired = append(expired, OnlineStateEvent{UID: st.UID, IP: ip, Online: false})
+			}
+			return true
+		})
+		return true
+	})
+	for i := range expired {
+		l.emitOnlineStateEvent(expired[i])
+	}
+	return expired
+}
+
 type Limiter struct {
 	DomainRules   []*regexp.Regexp
 	ProtocolRules []string
 	SpeedLimit    int
 	UserOnlineIP  *sync.Map      // Key: TagUUID, value: {Key: Ip, value: Uid}
 	OldUserOnline *sync.Map      // Key: Ip, value: Uid
+	UserOnlineLS  *sync.Map      // Key: TagUUID, value: {Key: Ip, value: *OnlineState}
 	UUIDtoUID     map[string]int // Key: UUID, value: Uid
 	UserLimitInfo *sync.Map      // Key: TagUUID value: UserLimitInfo
 	SpeedLimiter  *sync.Map      // key: TagUUID, value: *ratelimit.Bucket
 	AliveList     map[int]int    // Key: Uid, value: alive_ip
+
+	onlineStateMu sync.RWMutex
+	onlineHook    func(evt OnlineStateEvent)
+}
+
+type OnlineState struct {
+	UID      int
+	LastSeen time.Time
+}
+
+type OnlineStateEvent struct {
+	UID    int
+	IP     string
+	Online bool
 }
 
 type UserLimitInfo struct {
@@ -45,6 +111,7 @@ func AddLimiter(tag string, l *conf.LimitConfig, users []panel.UserInfo, aliveLi
 	info := &Limiter{
 		SpeedLimit:    l.SpeedLimit,
 		UserOnlineIP:  new(sync.Map),
+		UserOnlineLS:  new(sync.Map),
 		UserLimitInfo: new(sync.Map),
 		SpeedLimiter:  new(sync.Map),
 		AliveList:     aliveList,
@@ -123,6 +190,21 @@ func (l *Limiter) UpdateDynamicSpeedLimit(tag, uuid string, limit int, expire ti
 	return nil
 }
 
+func (l *Limiter) SetOnlineStateHook(hook func(evt OnlineStateEvent)) {
+	l.onlineStateMu.Lock()
+	l.onlineHook = hook
+	l.onlineStateMu.Unlock()
+}
+
+func (l *Limiter) emitOnlineStateEvent(evt OnlineStateEvent) {
+	l.onlineStateMu.RLock()
+	h := l.onlineHook
+	l.onlineStateMu.RUnlock()
+	if h != nil {
+		h(evt)
+	}
+}
+
 func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool) (Bucket *ratelimit.Bucket, Reject bool) {
 	// check if ipv4 mapped ipv6
 	ip = strings.TrimPrefix(ip, "::ffff:")
@@ -155,6 +237,7 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 		newipMap := new(sync.Map)
 		newipMap.Store(ip, uid)
 		aliveIp := l.AliveList[uid]
+		now := time.Now()
 		// If any device is online
 		if v, loaded := l.UserOnlineIP.LoadOrStore(taguuid, newipMap); loaded {
 			oldipMap := v.(*sync.Map)
@@ -170,6 +253,7 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 						return nil, true
 					}
 				}
+				l.updateOnlineLastSeen(taguuid, ip, uid, now, true)
 			}
 		} else if v, ok := l.OldUserOnline.Load(ip); ok {
 			if v.(int) == uid {
@@ -182,7 +266,9 @@ func (l *Limiter) CheckLimit(taguuid string, ip string, isTcp bool, noSSUDP bool
 					return nil, true
 				}
 			}
+			l.updateOnlineLastSeen(taguuid, ip, uid, now, true)
 		}
+		l.updateOnlineLastSeen(taguuid, ip, uid, now, false)
 	}
 
 	limit := int64(determineSpeedLimit(nodeLimit, userLimit)) * 1000000 / 8 // If you need the Speed limit

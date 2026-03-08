@@ -21,11 +21,17 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 		Interval: node.PushInterval,
 		Execute:  c.reportUserTrafficTask,
 	}
+	// expire online users task (offline after idle)
+	c.onlineIpReportPeriodic = &task.Task{
+		Interval: 5 * time.Second,
+		Execute:  c.expireOnlineTask,
+	}
 	log.WithField("tag", c.tag).Info("Start monitor node status")
 	// delay to start nodeInfoMonitor
 	_ = c.nodeInfoMonitorPeriodic.Start(false)
 	log.WithField("tag", c.tag).Info("Start report node status")
 	_ = c.userReportPeriodic.Start(false)
+	_ = c.onlineIpReportPeriodic.Start(false)
 	if node.Security == panel.Tls {
 		switch c.CertConfig.CertMode {
 		case "none", "", "file", "self":
