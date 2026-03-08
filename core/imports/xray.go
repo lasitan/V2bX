@@ -1,4 +1,4 @@
-//go:build xray
+//go:build xray && linux
 
 package imports
 

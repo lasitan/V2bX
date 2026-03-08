@@ -105,9 +105,9 @@ jobs:
               env_vars+=("GOMIPS=$GOMIPS")
             fi
 
-            build_tags="sing xray hysteria2 with_quic with_grpc with_utls with_acme"
+            build_tags="sing hysteria2 with_quic with_grpc with_utls with_acme"
             if [ "$GOOS" = "linux" ]; then
-              build_tags="$build_tags with_wireguard with_gvisor"
+              build_tags="$build_tags xray with_wireguard with_gvisor"
             fi
             env "${env_vars[@]}" go build -trimpath -tags "$build_tags" -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
 
