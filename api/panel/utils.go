@@ -3,7 +3,7 @@ package panel
 import (
 	"fmt"
 	"github.com/go-resty/resty/v2"
-	path2 "path"
+	"net/url"
 )
 
 // Debug set the client debug for client
@@ -12,7 +12,15 @@ func (c *Client) Debug() {
 }
 
 func (c *Client) assembleURL(path string) string {
-	return path2.Join(c.APIHost + path)
+	base, err := url.Parse(c.APIHost)
+	if err != nil {
+		return c.APIHost + path
+	}
+	ref, err := url.Parse(path)
+	if err != nil {
+		return c.APIHost + path
+	}
+	return base.ResolveReference(ref).String()
 }
 func (c *Client) checkResponse(res *resty.Response, path string, err error) error {
 	if err != nil {
