@@ -30,13 +30,14 @@ jobs:
           clean: false
           fetch-depth: 1
           submodules: false
+          path: src
 
       - name: Read version
         id: version
         shell: bash
         run: |
           set -euo pipefail
-          VERSION="$(tr -d '\r\n\t ' < .github/build/version.txt)"
+          VERSION="$(tr -d '\r\n\t ' < src/.github/build/version.txt)"
           if [ -z "$VERSION" ]; then
             echo "version.txt is empty" >&2
             exit 1
@@ -74,7 +75,7 @@ jobs:
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
-          context: .
+          context: ./src
           platforms: linux/amd64,linux/arm64
           push: true
           tags: ${{ steps.meta.outputs.tags }}
