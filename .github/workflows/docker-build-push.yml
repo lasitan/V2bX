@@ -26,6 +26,10 @@ jobs:
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+          submodules: false
 
       - name: Read version
         id: version
