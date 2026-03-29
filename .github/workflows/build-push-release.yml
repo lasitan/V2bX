@@ -16,8 +16,8 @@ jobs:
     runs-on: [self-hosted, Linux, X64]
     env:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      GOMODCACHE: ${{ runner.temp }}/v2bx-go/mod
-      GOCACHE: ${{ runner.temp }}/v2bx-go/build
+      GOMODCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/mod
+      GOCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/build
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,6 +26,12 @@ jobs:
           fetch-depth: 1
           submodules: false
           path: src
+
+      - name: Init Go cache dirs
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "$GOMODCACHE" "$GOCACHE"
 
       - name: Set up Go
         uses: actions/setup-go@v5
