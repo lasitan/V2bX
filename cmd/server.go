@@ -5,6 +5,7 @@ import (
 	"os/signal"
 	"runtime"
 	"syscall"
+	"time"
 
 	"github.com/InazumaV/V2bX/conf"
 	vCore "github.com/InazumaV/V2bX/core"
@@ -73,12 +74,12 @@ func serverHandle(_ *cobra.Command, _ []string) {
 		log.WithField("err", err).Error("Start core failed")
 		return
 	}
-	defer vc.Close()
 	log.Info("Core ", vc.Type(), " started")
 	nodes := node.New()
 	err = nodes.Start(c.NodeConfig, vc)
 	if err != nil {
 		log.WithField("err", err).Error("Run nodes failed")
+		_ = vc.Close()
 		return
 	}
 	log.Info("Nodes started")
@@ -113,6 +114,8 @@ func serverHandle(_ *cobra.Command, _ []string) {
 		})
 		if err != nil {
 			log.WithField("err", err).Error("start watch failed")
+			nodes.Close()
+			_ = vc.Close()
 			return
 		}
 	}
@@ -123,5 +126,20 @@ func serverHandle(_ *cobra.Command, _ []string) {
 		osSignals := make(chan os.Signal, 1)
 		signal.Notify(osSignals, syscall.SIGINT, syscall.SIGTERM)
 		<-osSignals
+	}
+
+	shutdownTimeout := 10 * time.Second
+	shutdownDone := make(chan struct{})
+	go func() {
+		defer close(shutdownDone)
+		nodes.Close()
+		_ = vc.Close()
+	}()
+	select {
+	case <-shutdownDone:
+		return
+	case <-time.After(shutdownTimeout):
+		log.WithField("timeout", shutdownTimeout.String()).Warn("Shutdown timeout, force exit")
+		os.Exit(0)
 	}
 }
