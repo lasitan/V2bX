@@ -3,6 +3,7 @@ package panel
 import (
 	"context"
 	"crypto/tls"
+	"errors"
 	"fmt"
 	"net/http"
 	"net/url"
@@ -25,14 +26,18 @@ const (
 	wsStateUnavailable
 )
 
-type wsRequest struct {
+
+type WSRequest struct {
+	Id      int64               `json:"id,omitempty"`
 	Method  string              `json:"method"`
 	Path    string              `json:"path"`
 	Headers map[string][]string `json:"headers,omitempty"`
 	Body    []byte              `json:"body,omitempty"`
 }
 
-type wsResponse struct {
+
+type WSResponse struct {
+	Id         int64               `json:"id,omitempty"`
 	StatusCode int                 `json:"status"`
 	Headers    map[string][]string `json:"headers,omitempty"`
 	Body       []byte              `json:"body,omitempty"`
@@ -43,6 +48,16 @@ func (c *Client) closeWSConnLocked() {
 		_ = c.wsConn.Close()
 		c.wsConn = nil
 	}
+	c.wsPendingMu.Lock()
+	for id, ch := range c.wsPending {
+		delete(c.wsPending, id)
+		select {
+		case ch <- wsPendingResult{resp: nil, err: errors.New("ws connection closed")}:
+		default:
+		}
+		close(ch)
+	}
+	c.wsPendingMu.Unlock()
 }
 
 func (c *Client) ensureWSConnLocked(ctx context.Context, headers map[string]string, path string) error {
@@ -69,7 +84,94 @@ func (c *Client) ensureWSConnLocked(ctx context.Context, headers map[string]stri
 		return err
 	}
 	c.wsConn = conn
+	go c.wsReadLoop(conn)
 	return nil
+}
+
+type wsMessage struct {
+	Id      int64               `json:"id,omitempty"`
+	Method  string              `json:"method,omitempty"`
+	Path    string              `json:"path,omitempty"`
+	Status  int                 `json:"status,omitempty"`
+	Headers map[string][]string `json:"headers,omitempty"`
+	Body    []byte              `json:"body,omitempty"`
+}
+
+func (c *Client) wsReadLoop(conn *websocket.Conn) {
+	for {
+		mt, payload, err := conn.ReadMessage()
+		if err != nil {
+			c.wsConnMu.Lock()
+			if c.wsConn == conn {
+				c.closeWSConnLocked()
+				c.setWsState(wsStateUnavailable)
+			}
+			c.wsConnMu.Unlock()
+			return
+		}
+		if mt != websocket.TextMessage && mt != websocket.BinaryMessage {
+			continue
+		}
+		var msg wsMessage
+		if err := json.Unmarshal(payload, &msg); err != nil {
+			continue
+		}
+
+		// Response path: dispatch to pending request.
+		if msg.Method == "" {
+			resp := &WSResponse{Id: msg.Id, StatusCode: msg.Status, Headers: msg.Headers, Body: msg.Body}
+			if c.dispatchWSPending(resp) {
+				continue
+			}
+			continue
+		}
+
+		// Request path: handle server-initiated request.
+		c.wsHandlerMu.RLock()
+		h := c.wsHandler
+		c.wsHandlerMu.RUnlock()
+		if h == nil {
+			_ = c.wsWriteResponse(conn, &WSResponse{Id: msg.Id, StatusCode: 404, Headers: map[string][]string{"Content-Type": {"text/plain"}}, Body: []byte("no handler")})
+			continue
+		}
+		resp := h(WSRequest{Id: msg.Id, Method: msg.Method, Path: msg.Path, Headers: msg.Headers, Body: msg.Body})
+		resp.Id = msg.Id
+		_ = c.wsWriteResponse(conn, &resp)
+	}
+}
+
+func (c *Client) dispatchWSPending(resp *WSResponse) bool {
+	c.wsPendingMu.Lock()
+	defer c.wsPendingMu.Unlock()
+	if resp.Id != 0 {
+		if ch, ok := c.wsPending[resp.Id]; ok {
+			delete(c.wsPending, resp.Id)
+			ch <- wsPendingResult{resp: resp, err: nil}
+			close(ch)
+			return true
+		}
+		return false
+	}
+	// Backward compatibility: if no id, deliver to the only pending request.
+	if len(c.wsPending) == 1 {
+		for id, ch := range c.wsPending {
+			delete(c.wsPending, id)
+			ch <- wsPendingResult{resp: resp, err: nil}
+			close(ch)
+			return true
+		}
+	}
+	return false
+}
+
+func (c *Client) wsWriteResponse(conn *websocket.Conn, resp *WSResponse) error {
+	payload, err := json.Marshal(resp)
+	if err != nil {
+		return err
+	}
+	c.wsWriteMu.Lock()
+	defer c.wsWriteMu.Unlock()
+	return conn.WriteMessage(websocket.TextMessage, payload)
 }
 
 func (c *Client) wsEnabled() bool {
@@ -148,13 +250,10 @@ func (c *Client) wsURL(path string) (string, error) {
 	return wsu.String(), nil
 }
 
-func (c *Client) doWS(ctx context.Context, method, path string, headers map[string]string, body []byte) (*wsResponse, error) {
-	req := wsRequest{
-		Method:  method,
-		Path:    path,
-		Headers: make(map[string][]string, len(headers)),
-		Body:    body,
-	}
+
+func (c *Client) doWS(ctx context.Context, method, path string, headers map[string]string, body []byte) (*WSResponse, error) {
+	id := atomic.AddInt64(&c.wsNextID, 1)
+	req := WSRequest{Id: id, Method: method, Path: path, Headers: make(map[string][]string, len(headers)), Body: body}
 	for k, v := range headers {
 		req.Headers[k] = []string{v}
 	}
@@ -164,47 +263,54 @@ func (c *Client) doWS(ctx context.Context, method, path string, headers map[stri
 		return nil, err
 	}
 
-	c.wsConnMu.Lock()
-	defer c.wsConnMu.Unlock()
+	resultCh := make(chan wsPendingResult, 1)
+	c.wsPendingMu.Lock()
+	c.wsPending[id] = resultCh
+	c.wsPendingMu.Unlock()
 
-	tryOnce := func() ([]byte, error) {
+	tryOnce := func() error {
+		c.wsConnMu.Lock()
+		defer c.wsConnMu.Unlock()
 		if err := c.ensureWSConnLocked(ctx, headers, path); err != nil {
-			return nil, err
+			return err
 		}
 		if d, ok := ctx.Deadline(); ok {
 			_ = c.wsConn.SetWriteDeadline(d)
-			_ = c.wsConn.SetReadDeadline(d)
 		}
-		if err := c.wsConn.WriteMessage(websocket.TextMessage, payload); err != nil {
-			c.closeWSConnLocked()
-			return nil, err
-		}
-		_, respPayload, err := c.wsConn.ReadMessage()
+		c.wsWriteMu.Lock()
+		err := c.wsConn.WriteMessage(websocket.TextMessage, payload)
+		c.wsWriteMu.Unlock()
 		if err != nil {
 			c.closeWSConnLocked()
-			return nil, err
+			return err
 		}
 		if _, ok := ctx.Deadline(); ok {
 			_ = c.wsConn.SetWriteDeadline(time.Time{})
-			_ = c.wsConn.SetReadDeadline(time.Time{})
 		}
-		return respPayload, nil
+		return nil
 	}
 
-	respPayload, err := tryOnce()
-	if err != nil {
+	if err := tryOnce(); err != nil {
 		// Reconnect once and retry the same request.
-		respPayload, err = tryOnce()
-		if err != nil {
+		if err := tryOnce(); err != nil {
+			c.wsPendingMu.Lock()
+			delete(c.wsPending, id)
+			c.wsPendingMu.Unlock()
+			close(resultCh)
 			return nil, err
 		}
 	}
 
-	var resp wsResponse
-	if err := json.Unmarshal(respPayload, &resp); err != nil {
-		return nil, err
+	select {
+	case r := <-resultCh:
+		return r.resp, r.err
+	case <-ctx.Done():
+		c.wsPendingMu.Lock()
+		delete(c.wsPending, id)
+		c.wsPendingMu.Unlock()
+		close(resultCh)
+		return nil, ctx.Err()
 	}
-	return &resp, nil
 }
 
 func (c *Client) doRequest(method, path string, headers map[string]string, body []byte) (status int, respHeaders map[string][]string, respBody []byte, usedWS bool, err error) {

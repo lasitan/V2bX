@@ -36,11 +36,22 @@ type Client struct {
 	wsLastFailUnixNs int64
 	wsConnMu         sync.Mutex
 	wsConn           *websocket.Conn
+	wsWriteMu        sync.Mutex
+	wsNextID         int64
+	wsPendingMu      sync.Mutex
+	wsPending        map[int64]chan wsPendingResult
+	wsHandlerMu      sync.RWMutex
+	wsHandler        func(req WSRequest) WSResponse
 	nodeEtag         string
 	userEtag         string
 	responseBodyHash string
 	UserList         *UserListBody
 	AliveMap         *AliveMap
+}
+
+type wsPendingResult struct {
+	resp *WSResponse
+	err  error
 }
 
 func New(c *conf.ApiConfig) (*Client, error) {
@@ -106,9 +117,16 @@ func New(c *conf.ApiConfig) (*Client, error) {
 			return m
 		}(),
 		wsState:  int32(wsStateUnknown),
+		wsPending: make(map[int64]chan wsPendingResult),
 		UserList: &UserListBody{},
 		AliveMap: &AliveMap{},
 	}, nil
+}
+
+func (c *Client) SetWSHandler(h func(req WSRequest) WSResponse) {
+	c.wsHandlerMu.Lock()
+	c.wsHandler = h
+	c.wsHandlerMu.Unlock()
 }
 
 func (c *Client) disableWS() {
