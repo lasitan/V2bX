@@ -58,9 +58,6 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		// Keep DNS cache in one deterministic file under config directory.
 		cachePath = filepath.Join(filepath.Dir(c.SingConfig.OriginalPath), "cache.db")
 		data = withSingleDNSCacheFile(data, cachePath)
-		if err := ensureCacheFile(cachePath); err != nil {
-			return nil, fmt.Errorf("prepare cache file error: %s", err)
-		}
 		options, err = json.UnmarshalExtendedContext[option.Options](ctx, data)
 		if err != nil {
 			return nil, fmt.Errorf("unmarshal original config error: %s", err)
@@ -89,8 +86,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		return nil, err
 	}
 	hs := &HookServer{
-		counter:       sync.Map{},
-		cacheFilePath: cachePath,
+		counter: sync.Map{},
 	}
 	b.Router().AppendTracker(hs)
 	return &Sing{
@@ -163,16 +159,3 @@ func withSingleDNSCacheFile(raw []byte, cachePath string) []byte {
 	return out
 }
 
-func ensureCacheFile(cachePath string) error {
-	if cachePath == "" {
-		return nil
-	}
-	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
-		return err
-	}
-	f, err := os.OpenFile(cachePath, os.O_CREATE, 0644)
-	if err != nil {
-		return err
-	}
-	return f.Close()
-}

@@ -24,6 +24,9 @@ func dnsCacheKey(transportName string, qName string, qType uint16, qClass uint16
 }
 
 func (c *CacheFile) LoadDNSCache(transportName string, qName string, qType uint16, qClass uint16) (response *mDNS.Msg, expiresAt time.Time, loaded bool) {
+	if err := c.ensureDBReady(); err != nil {
+		return nil, time.Time{}, false
+	}
 	key := dnsCacheKey(transportName, qName, qType, qClass)
 	defer buf.Put(key)
 	_ = c.DB.View(func(tx *bbolt.Tx) error {
@@ -53,6 +56,9 @@ func (c *CacheFile) LoadDNSCache(transportName string, qName string, qType uint1
 }
 
 func (c *CacheFile) SaveDNSCache(transportName string, qName string, qType uint16, qClass uint16, response *mDNS.Msg, expiresAt time.Time) error {
+	if err := c.ensureDBReady(); err != nil {
+		return err
+	}
 	wire, err := response.Pack()
 	if err != nil {
 		return err
@@ -77,6 +83,9 @@ func (c *CacheFile) SaveDNSCache(transportName string, qName string, qType uint1
 }
 
 func (c *CacheFile) DeleteDNSCache(transportName string, qName string, qType uint16, qClass uint16) error {
+	if err := c.ensureDBReady(); err != nil {
+		return err
+	}
 	key := dnsCacheKey(transportName, qName, qType, qClass)
 	defer buf.Put(key)
 	return c.DB.Batch(func(tx *bbolt.Tx) error {
@@ -89,6 +98,9 @@ func (c *CacheFile) DeleteDNSCache(transportName string, qName string, qType uin
 }
 
 func (c *CacheFile) ClearDNSCache() error {
+	if err := c.ensureDBReady(); err != nil {
+		return err
+	}
 	return c.DB.Batch(func(tx *bbolt.Tx) error {
 		if c.cacheID == nil {
 			_ = tx.DeleteBucket(bucketDNSCache)

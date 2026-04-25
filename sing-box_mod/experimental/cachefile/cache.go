@@ -5,6 +5,7 @@ import (
 	"errors"
 	"net/netip"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -41,6 +42,7 @@ var _ adapter.CacheFile = (*CacheFile)(nil)
 type CacheFile struct {
 	ctx               context.Context
 	path              string
+	dbAccess          sync.Mutex
 	cacheID           []byte
 	storeFakeIP       bool
 	storeRDRC         bool
@@ -164,10 +166,49 @@ func (c *CacheFile) Start(stage adapter.StartStage) error {
 }
 
 func (c *CacheFile) Close() error {
+	c.dbAccess.Lock()
+	defer c.dbAccess.Unlock()
 	if c.DB == nil {
 		return nil
 	}
 	return c.DB.Close()
+}
+
+func (c *CacheFile) ensureDBReady() error {
+	c.dbAccess.Lock()
+	defer c.dbAccess.Unlock()
+
+	pathMissing := false
+	if _, err := os.Stat(c.path); err != nil {
+		if os.IsNotExist(err) {
+			pathMissing = true
+		} else {
+			return err
+		}
+	}
+	if c.DB != nil && !pathMissing {
+		return nil
+	}
+	if c.DB != nil {
+		_ = c.DB.Close()
+		c.DB = nil
+	}
+
+	if err := os.MkdirAll(filepath.Dir(c.path), 0755); err != nil {
+		return err
+	}
+	const fileMode = 0o666
+	options := bbolt.Options{Timeout: time.Second}
+	db, err := bbolt.Open(c.path, fileMode, &options)
+	if err != nil {
+		return err
+	}
+	if err = filemanager.Chown(c.ctx, c.path); err != nil {
+		db.Close()
+		return E.Cause(err, "platform chown")
+	}
+	c.DB = db
+	return nil
 }
 
 func (c *CacheFile) StoreFakeIP() bool {

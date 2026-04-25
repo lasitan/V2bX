@@ -20,8 +20,7 @@ import (
 var _ adapter.ConnectionTracker = (*HookServer)(nil)
 
 type HookServer struct {
-	counter       sync.Map //map[string]*counter.TrafficCounter
-	cacheFilePath string
+	counter sync.Map //map[string]*counter.TrafficCounter
 }
 
 func (h *HookServer) ModeList() []string {
@@ -29,7 +28,6 @@ func (h *HookServer) ModeList() []string {
 }
 
 func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) net.Conn {
-	_ = ensureCacheFile(h.cacheFilePath)
 	l, err := limiter.GetLimiter(m.Inbound)
 	if err != nil {
 		log.Warn("get limiter for ", m.Inbound, " error: ", err)
@@ -78,7 +76,6 @@ func (h *HookServer) RoutedConnection(_ context.Context, conn net.Conn, m adapte
 }
 
 func (h *HookServer) RoutedPacketConnection(_ context.Context, conn N.PacketConn, m adapter.InboundContext, _ adapter.Rule, _ adapter.Outbound) N.PacketConn {
-	_ = ensureCacheFile(h.cacheFilePath)
 	l, err := limiter.GetLimiter(m.Inbound)
 	if err != nil {
 		log.Warn("get limiter for ", m.Inbound, " error: ", err)
