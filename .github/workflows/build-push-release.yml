@@ -56,6 +56,11 @@ jobs:
           go-version-file: checkout/go.mod
           cache: true
 
+      - name: Sync go.mod and go.sum
+        run: |
+          set -euo pipefail
+          go mod tidy
+
       - name: Read version
         id: version
         run: |
@@ -100,7 +105,7 @@ jobs:
             out_name="V2bX-${friendly}${ext}"
             out_path="dist/binaries/${out_name}"
             echo "Building ${key} -> ${out_name}"
-            env_vars=("GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=0")
+            env_vars=("GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=0" "GOFLAGS=-mod=mod")
             if [ -n "${GOARM:-}" ]; then env_vars+=("GOARM=$GOARM"); fi
             if [ -n "${GOMIPS:-}" ]; then env_vars+=("GOMIPS=$GOMIPS"); fi
             build_tags="sing hysteria2 with_quic with_grpc with_utls with_acme"
@@ -191,6 +196,11 @@ jobs:
           go-version-file: checkout/go.mod
           cache: true
 
+      - name: Sync go.mod and go.sum
+        run: |
+          set -euo pipefail
+          go mod tidy
+
       - name: Read version
         id: version
         run: |
@@ -235,7 +245,7 @@ jobs:
             out_name="V2bX-${friendly}${ext}"
             out_path="dist/binaries/${out_name}"
             echo "Building ${key} -> ${out_name}"
-            env_vars=("GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=0")
+            env_vars=("GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=0" "GOFLAGS=-mod=mod")
             if [ -n "${GOARM:-}" ]; then env_vars+=("GOARM=$GOARM"); fi
             if [ -n "${GOMIPS:-}" ]; then env_vars+=("GOMIPS=$GOMIPS"); fi
             build_tags="sing hysteria2 with_quic with_grpc with_utls with_acme"
