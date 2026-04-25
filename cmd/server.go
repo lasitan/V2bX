@@ -55,12 +55,14 @@ func serverHandle(_ *cobra.Command, _ []string) {
 	case "error":
 		log.SetLevel(log.ErrorLevel)
 	}
+	var startupLogSession *startupLogSession
 	if c.LogConfig.Output != "" {
-		f, err := os.OpenFile(c.LogConfig.Output, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0644)
+		startupLogSession, err = newStartupLogSession(c.LogConfig.Output)
 		if err != nil {
 			log.WithField("err", err).Error("Open log file failed, using stdout instead")
+		} else {
+			defer startupLogSession.Close()
 		}
-		log.SetOutput(f)
 	}
 	limiter.Init()
 	log.Info("Start V2bX...")
@@ -83,6 +85,9 @@ func serverHandle(_ *cobra.Command, _ []string) {
 		return
 	}
 	log.Info("Nodes started")
+	if startupLogSession != nil {
+		startupLogSession.MarkStartupSuccess()
+	}
 	xdns := os.Getenv("XRAY_DNS_PATH")
 	sdns := os.Getenv("SING_DNS_PATH")
 	if watch {

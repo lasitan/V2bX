@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/sagernet/sing-box/include"
@@ -48,10 +49,17 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	ctx := context.Background()
 	ctx = box.Context(ctx, include.InboundRegistry(), include.OutboundRegistry(), include.EndpointRegistry(), include.DNSTransportRegistry(), include.ServiceRegistry())
 	options := option.Options{}
+	cachePath := ""
 	if len(c.SingConfig.OriginalPath) != 0 {
 		data, err := os.ReadFile(c.SingConfig.OriginalPath)
 		if err != nil {
 			return nil, fmt.Errorf("read original config error: %s", err)
+		}
+		// Keep DNS cache in one deterministic file under config directory.
+		cachePath = filepath.Join(filepath.Dir(c.SingConfig.OriginalPath), "cache.db")
+		data = withSingleDNSCacheFile(data, cachePath)
+		if err := ensureCacheFile(cachePath); err != nil {
+			return nil, fmt.Errorf("prepare cache file error: %s", err)
 		}
 		options, err = json.UnmarshalExtendedContext[option.Options](ctx, data)
 		if err != nil {
@@ -81,7 +89,8 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		return nil, err
 	}
 	hs := &HookServer{
-		counter: sync.Map{},
+		counter:       sync.Map{},
+		cacheFilePath: cachePath,
 	}
 	b.Router().AppendTracker(hs)
 	return &Sing{
@@ -124,4 +133,46 @@ func (b *Sing) Protocols() []string {
 
 func (b *Sing) Type() string {
 	return "sing"
+}
+
+func withSingleDNSCacheFile(raw []byte, cachePath string) []byte {
+	cfg := map[string]interface{}{}
+	if err := json.Unmarshal(raw, &cfg); err != nil {
+		return raw
+	}
+
+	experimental, ok := cfg["experimental"].(map[string]interface{})
+	if !ok || experimental == nil {
+		experimental = map[string]interface{}{}
+		cfg["experimental"] = experimental
+	}
+
+	cacheFile, ok := experimental["cache_file"].(map[string]interface{})
+	if !ok || cacheFile == nil {
+		cacheFile = map[string]interface{}{}
+		experimental["cache_file"] = cacheFile
+	}
+
+	cacheFile["enabled"] = true
+	cacheFile["path"] = cachePath
+
+	out, err := json.Marshal(cfg)
+	if err != nil {
+		return raw
+	}
+	return out
+}
+
+func ensureCacheFile(cachePath string) error {
+	if cachePath == "" {
+		return nil
+	}
+	if err := os.MkdirAll(filepath.Dir(cachePath), 0755); err != nil {
+		return err
+	}
+	f, err := os.OpenFile(cachePath, os.O_CREATE, 0644)
+	if err != nil {
+		return err
+	}
+	return f.Close()
 }
