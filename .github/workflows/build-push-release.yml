@@ -23,8 +23,9 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
     env:
-      GOMODCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/mod
-      GOCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/build
+      GOMODCACHE: ${{ github.workspace }}/_tmp/v2bx-go-cache/${{ github.run_id }}/mod
+      GOCACHE: ${{ github.workspace }}/_tmp/v2bx-go-cache/${{ github.run_id }}/build
+      GOTMPDIR: ${{ github.workspace }}/_tmp/v2bx-go-cache/${{ github.run_id }}/tmp
     defaults:
       run:
         working-directory: checkout
@@ -47,7 +48,7 @@ jobs:
       - name: Init Go cache dirs
         run: |
           set -euo pipefail
-          mkdir -p "$GOMODCACHE" "$GOCACHE"
+          mkdir -p "$GOMODCACHE" "$GOCACHE" "$GOTMPDIR"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -131,6 +132,11 @@ jobs:
             sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/checkout" || true
           fi
 
+      - name: Cleanup per-run Go temp dirs
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: rm -rf "_tmp/v2bx-go-cache/${GITHUB_RUN_ID}"
+
       - uses: actions/upload-artifact@v4
         with:
           name: release-x86
@@ -143,8 +149,9 @@ jobs:
       tag: ${{ steps.version.outputs.tag }}
       version: ${{ steps.version.outputs.version }}
     env:
-      GOMODCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/mod
-      GOCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/build
+      GOMODCACHE: ${{ github.workspace }}/_tmp/v2bx-go-cache/${{ github.run_id }}/mod
+      GOCACHE: ${{ github.workspace }}/_tmp/v2bx-go-cache/${{ github.run_id }}/build
+      GOTMPDIR: ${{ github.workspace }}/_tmp/v2bx-go-cache/${{ github.run_id }}/tmp
     defaults:
       run:
         working-directory: checkout
@@ -167,7 +174,7 @@ jobs:
       - name: Init Go cache dirs
         run: |
           set -euo pipefail
-          mkdir -p "$GOMODCACHE" "$GOCACHE"
+          mkdir -p "$GOMODCACHE" "$GOCACHE" "$GOTMPDIR"
 
       - name: Set up Go
         uses: actions/setup-go@v5
@@ -250,6 +257,11 @@ jobs:
           if command -v sudo >/dev/null 2>&1; then
             sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/checkout" || true
           fi
+
+      - name: Cleanup per-run Go temp dirs
+        if: always()
+        working-directory: ${{ github.workspace }}
+        run: rm -rf "_tmp/v2bx-go-cache/${GITHUB_RUN_ID}"
 
       - uses: actions/upload-artifact@v4
         with:
