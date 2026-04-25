@@ -130,12 +130,21 @@ jobs:
         run: |
           if command -v sudo >/dev/null 2>&1; then
             sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/checkout" || true
+            sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/_tmp" 2>/dev/null || true
           fi
 
       - name: Cleanup per-run Go temp dirs
         if: always()
         working-directory: ${{ github.workspace }}
-        run: rm -rf "_tmp/v2bx-go-cache/${GITHUB_RUN_ID}"
+        run: |
+          set -euo pipefail
+          target="_tmp/v2bx-go-cache/${GITHUB_RUN_ID}"
+          chmod -R u+rwX "$target" 2>/dev/null || true
+          rm -rf "$target" 2>/dev/null || true
+          if [ -e "$target" ] && command -v sudo >/dev/null 2>&1; then
+            sudo chmod -R ugo+rwX "$target" 2>/dev/null || true
+            sudo rm -rf "$target" || true
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
@@ -256,12 +265,21 @@ jobs:
         run: |
           if command -v sudo >/dev/null 2>&1; then
             sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/checkout" || true
+            sudo chown -R "$(id -u):$(id -g)" "${GITHUB_WORKSPACE}/_tmp" 2>/dev/null || true
           fi
 
       - name: Cleanup per-run Go temp dirs
         if: always()
         working-directory: ${{ github.workspace }}
-        run: rm -rf "_tmp/v2bx-go-cache/${GITHUB_RUN_ID}"
+        run: |
+          set -euo pipefail
+          target="_tmp/v2bx-go-cache/${GITHUB_RUN_ID}"
+          chmod -R u+rwX "$target" 2>/dev/null || true
+          rm -rf "$target" 2>/dev/null || true
+          if [ -e "$target" ] && command -v sudo >/dev/null 2>&1; then
+            sudo chmod -R ugo+rwX "$target" 2>/dev/null || true
+            sudo rm -rf "$target" || true
+          fi
 
       - uses: actions/upload-artifact@v4
         with:
