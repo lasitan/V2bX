@@ -41,6 +41,8 @@ type CacheFile interface {
 	StoreFakeIP() bool
 	FakeIPStorage
 
+	DNSCacheStore
+
 	StoreRDRC() bool
 	RDRCStore
 
