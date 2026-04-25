@@ -85,6 +85,8 @@ jobs:
         with:
           context: ./src
           platforms: linux/amd64
+          build-args: |
+            PROXY=https://proxy.golang.org,https://goproxy.cn,direct
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
@@ -175,6 +177,8 @@ jobs:
         with:
           context: ./src
           platforms: linux/arm64
+          build-args: |
+            PROXY=https://proxy.golang.org,https://goproxy.cn,direct
           push: true
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}

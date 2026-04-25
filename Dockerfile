@@ -7,12 +7,21 @@ ARG TARGETOS
 ARG TARGETARCH
 ARG TARGETVARIANT
 ARG BUILDPLATFORM
-ARG PROXY=https://goproxy.cn,direct
+ARG PROXY=https://proxy.golang.org,https://goproxy.cn,direct
 ENV GOPROXY=${PROXY}
 ARG GOSUMDB=off
 ENV GOSUMDB=${GOSUMDB}
+ENV GODEBUG=http2client=0
 
-RUN go mod download
+RUN set -eux; \
+    n=0; \
+    until [ "$n" -ge 5 ]; do \
+      go mod download && break; \
+      n=$((n+1)); \
+      echo "go mod download failed, retry ${n}/5"; \
+      sleep $((n*2)); \
+    done; \
+    [ "$n" -lt 5 ]
 RUN GOOS=$TARGETOS GOARCH=$TARGETARCH go build -v -o V2bX -tags "sing xray hysteria2 with_quic with_grpc with_utls with_wireguard with_acme with_gvisor"
 
 # Release
