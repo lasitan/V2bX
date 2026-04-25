@@ -24,7 +24,7 @@ jobs:
       http_proxy: ""
       https_proxy: ""
       no_proxy: ""
-      LOCAL_CACHE_DIR: /tmp/.buildx-cache-v2bx-amd64
+      LOCAL_CACHE_DIR: ${{ github.workspace }}/_tmp/.buildx-cache-v2bx-amd64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -73,6 +73,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare local buildx cache dir
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${LOCAL_CACHE_DIR}"
+          rm -rf "${LOCAL_CACHE_DIR}-new"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -82,7 +89,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=local,src=${{ env.LOCAL_CACHE_DIR }}
-          cache-to: type=local,dest=${{ env.LOCAL_CACHE_DIR }}-new,mode=max
+          cache-to: type=local,dest=${{ env.LOCAL_CACHE_DIR }}-new,mode=min
 
       - name: Rotate local buildx cache
         if: always()
@@ -94,13 +101,20 @@ jobs:
             mv "${LOCAL_CACHE_DIR}-new" "${LOCAL_CACHE_DIR}"
           fi
 
+      - name: Cleanup old workspace temp
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "${GITHUB_WORKSPACE}/_tmp" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
+
   build-arm64:
     runs-on: [self-hosted, Linux, ARM64]
     env:
       http_proxy: ""
       https_proxy: ""
       no_proxy: ""
-      LOCAL_CACHE_DIR: /tmp/.buildx-cache-v2bx-arm64
+      LOCAL_CACHE_DIR: ${{ github.workspace }}/_tmp/.buildx-cache-v2bx-arm64
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -149,6 +163,13 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      - name: Prepare local buildx cache dir
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p "${LOCAL_CACHE_DIR}"
+          rm -rf "${LOCAL_CACHE_DIR}-new"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -158,7 +179,7 @@ jobs:
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
           cache-from: type=local,src=${{ env.LOCAL_CACHE_DIR }}
-          cache-to: type=local,dest=${{ env.LOCAL_CACHE_DIR }}-new,mode=max
+          cache-to: type=local,dest=${{ env.LOCAL_CACHE_DIR }}-new,mode=min
 
       - name: Rotate local buildx cache
         if: always()
@@ -169,6 +190,13 @@ jobs:
             rm -rf "${LOCAL_CACHE_DIR}"
             mv "${LOCAL_CACHE_DIR}-new" "${LOCAL_CACHE_DIR}"
           fi
+
+      - name: Cleanup old workspace temp
+        if: always()
+        shell: bash
+        run: |
+          set -euo pipefail
+          find "${GITHUB_WORKSPACE}/_tmp" -mindepth 1 -maxdepth 1 -type d -mtime +7 -exec rm -rf {} +
 
   merge-manifest:
     needs: [build-amd64, build-arm64]
