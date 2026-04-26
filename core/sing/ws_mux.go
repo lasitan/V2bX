@@ -229,14 +229,52 @@ func (s *wsMuxServer) handleConn(c net.Conn) {
 
 	errCh := make(chan error, 2)
 	go func() {
-		_, e := io.Copy(backend, br)
+		e := relayStream(backend, br)
+		closeWrite(backend)
 		errCh <- e
 	}()
 	go func() {
-		_, e := io.Copy(c, backend)
+		e := relayStream(c, backend)
+		closeWrite(c)
 		errCh <- e
 	}()
 	<-errCh
+}
+
+// relayStream avoids io.Copy's splice fast-path on Linux kernels where
+// long-running websocket relay may hit runtime-invalid-argument crashes.
+func relayStream(dst io.Writer, src io.Reader) error {
+	buf := make([]byte, 32*1024)
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			written := 0
+			for written < nr {
+				nw, ew := dst.Write(buf[written:nr])
+				if nw > 0 {
+					written += nw
+				}
+				if ew != nil {
+					return ew
+				}
+				if nw == 0 {
+					return io.ErrShortWrite
+				}
+			}
+		}
+		if er != nil {
+			if errors.Is(er, io.EOF) {
+				return nil
+			}
+			return er
+		}
+	}
+}
+
+func closeWrite(conn net.Conn) {
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		_ = tcpConn.CloseWrite()
+	}
 }
 
 func readHTTPHeader(br *bufio.Reader) (raw []byte, host string, path string, err error) {
