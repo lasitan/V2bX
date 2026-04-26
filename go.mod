@@ -332,4 +332,8 @@ require (
 
 replace github.com/sagernet/sing-box v1.13.0 => ./sing-box_mod
 
+replace github.com/sagernet/sing-tun => github.com/sagernet/sing-tun v0.8.0-beta.11
+
+replace gvisor.dev/gvisor => github.com/sagernet/gvisor v0.0.0-20250811.0-sing-box-mod.1
+
 replace github.com/xtls/xray-core v1.250911.1-0.20250911134820-83c5370eec69 => github.com/wyx2685/xray-core v0.0.0-20250912060919-a74bf884128d
