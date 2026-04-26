@@ -229,14 +229,71 @@ func (s *wsMuxServer) handleConn(c net.Conn) {
 
 	errCh := make(chan error, 2)
 	go func() {
-		_, e := io.Copy(backend, br)
+		e := relayStream(backend, br)
+		closeWrite(backend)
 		errCh <- e
 	}()
 	go func() {
-		_, e := io.Copy(c, backend)
+		e := relayStream(c, backend)
+		closeWrite(c)
 		errCh <- e
 	}()
-	<-errCh
+	err1 := <-errCh
+	err2 := <-errCh
+	if relayErrorUnexpected(err1) || relayErrorUnexpected(err2) {
+		log.WithFields(log.Fields{
+			"listen_ip": s.key.listenIP,
+			"port":      s.key.port,
+			"host":      host,
+			"path":      path,
+			"backend":   route.backendAddr,
+			"err_up":    err1,
+			"err_down":  err2,
+		}).Warn("ws mux relay closed with unexpected errors")
+	}
+}
+
+// relayStream uses buffered userspace copying and intentionally avoids io.Copy,
+// preventing Linux splice fast-path crashes under high-throughput websocket relay.
+func relayStream(dst io.Writer, src io.Reader) error {
+	buf := make([]byte, 32*1024)
+	for {
+		nr, er := src.Read(buf)
+		if nr > 0 {
+			written := 0
+			for written < nr {
+				nw, ew := dst.Write(buf[written:nr])
+				if nw > 0 {
+					written += nw
+				}
+				if ew != nil {
+					return ew
+				}
+				if nw == 0 {
+					return io.ErrShortWrite
+				}
+			}
+		}
+		if er != nil {
+			if errors.Is(er, io.EOF) {
+				return nil
+			}
+			return er
+		}
+	}
+}
+
+func closeWrite(conn net.Conn) {
+	if tcpConn, ok := conn.(*net.TCPConn); ok {
+		_ = tcpConn.CloseWrite()
+	}
+}
+
+func relayErrorUnexpected(err error) bool {
+	if err == nil || errors.Is(err, io.EOF) || errors.Is(err, net.ErrClosed) {
+		return false
+	}
+	return true
 }
 
 func readHTTPHeader(br *bufio.Reader) (raw []byte, host string, path string, err error) {

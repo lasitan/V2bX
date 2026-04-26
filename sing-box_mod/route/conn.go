@@ -294,7 +294,9 @@ func (m *ConnectionManager) connectionCopy(ctx context.Context, source net.Conn,
 		break
 	}
 
-	_, err := bufio.CopyWithCounters(destinationWriter, sourceReader, source, readCounters, writeCounters, bufio.DefaultIncreaseBufferAfter, bufio.DefaultBatchSize)
+	// Force buffered copy path and disable direct syscall/splice fast-path.
+	// This avoids runtime invalid-argument crashes observed in high-throughput relay.
+	_, err := bufio.CopyWithCounters(destinationWriter, sourceReader, nil, readCounters, writeCounters, bufio.DefaultIncreaseBufferAfter, bufio.DefaultBatchSize)
 	if err != nil {
 		common.Close(source, destination)
 	} else if duplexDst, isDuplex := destination.(N.WriteCloser); isDuplex {
