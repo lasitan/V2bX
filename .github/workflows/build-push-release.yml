@@ -12,12 +12,11 @@ permissions:
   contents: write
 
 jobs:
-  build-and-release:
+  prepare:
     runs-on: [self-hosted, Linux, X64]
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
-      GOMODCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/mod
-      GOCACHE: /tmp/v2bx-go-cache/${{ github.run_id }}/build
+    outputs:
+      version: ${{ steps.version.outputs.version }}
+      tag: ${{ steps.version.outputs.tag }}
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -26,18 +25,6 @@ jobs:
           fetch-depth: 1
           submodules: false
           path: src
-
-      - name: Init Go cache dirs
-        shell: bash
-        run: |
-          set -euo pipefail
-          mkdir -p "$GOMODCACHE" "$GOCACHE"
-
-      - name: Set up Go
-        uses: actions/setup-go@v5
-        with:
-          go-version-file: src/go.mod
-          cache: true
 
       - name: Read version
         id: version
@@ -57,87 +44,61 @@ jobs:
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
-      - name: Build all targets
+  build-x64:
+    runs-on: [self-hosted, Linux, X64]
+    needs: prepare
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+          submodules: false
+          path: src
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: false
+
+      - name: Build x64 target set
         shell: bash
         working-directory: src
         run: |
           set -euo pipefail
-          mkdir -p dist/binaries dist/archives
-          mkdir -p dist/package
-
-          VERSION='${{ steps.version.outputs.version }}'
-
+          mkdir -p dist/archives dist/package
+          VERSION='${{ needs.prepare.outputs.version }}'
           json_file='.github/build/friendly-filenames.json'
           for key in $(jq -r 'keys[]' "$json_file"); do
+            if [[ "$key" =~ arm|mips ]]; then
+              continue
+            fi
             friendly=$(jq -r --arg k "$key" '.[$k].friendlyName' "$json_file")
             os="${key%%-*}"
             arch_variant="${key#*-}"
-
             GOOS="$os"
             GOARCH="$arch_variant"
-            unset GOARM || true
-            unset GOMIPS || true
-
-            case "$arch_variant" in
-              arm5)
-                GOARCH=arm
-                GOARM=5
-                ;;
-              arm6)
-                GOARCH=arm
-                GOARM=6
-                ;;
-              arm7)
-                GOARCH=arm
-                GOARM=7
-                ;;
-              mipssoftfloat)
-                GOARCH=mips
-                GOMIPS=softfloat
-                ;;
-              mipslesoftfloat)
-                GOARCH=mipsle
-                GOMIPS=softfloat
-                ;;
-              *)
-                ;;
-            esac
-
             ext=""
             if [ "$GOOS" = "windows" ]; then
               ext=".exe"
             fi
-
             out_name="V2bX-${friendly}${ext}"
-            out_path="dist/binaries/${out_name}"
-
-            echo "Building ${key} -> ${out_name}"
-
-            env_vars=("GOOS=$GOOS" "GOARCH=$GOARCH" "CGO_ENABLED=0")
-            if [ -n "${GOARM:-}" ]; then
-              env_vars+=("GOARM=$GOARM")
-            fi
-            if [ -n "${GOMIPS:-}" ]; then
-              env_vars+=("GOMIPS=$GOMIPS")
-            fi
-
+            out_path="dist/${out_name}"
             build_tags="sing hysteria2 with_quic with_grpc with_utls with_acme"
             if [ "$GOOS" = "linux" ]; then
               build_tags="$build_tags xray with_wireguard with_gvisor"
             fi
-            env "${env_vars[@]}" go build -trimpath -tags "$build_tags" -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
-
+            CGO_ENABLED=0 GOOS="$GOOS" GOARCH="$GOARCH" go build -trimpath -tags "$build_tags" -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
             pkg_dir="dist/package/${friendly}"
             rm -rf "$pkg_dir"
             mkdir -p "$pkg_dir"
-
-            pkg_bin_name="V2bX${ext}"
-            cp "$out_path" "$pkg_dir/$pkg_bin_name"
-
+            cp "$out_path" "$pkg_dir/V2bX${ext}"
             if [ -d "example" ]; then
               cp -a "example/." "$pkg_dir/"
             fi
-
             if [ "$GOOS" = "windows" ]; then
               (cd "$pkg_dir" && zip -q -9 "../../archives/${out_name}.zip" ./*)
             else
@@ -145,13 +106,117 @@ jobs:
             fi
           done
 
+      - name: Upload archives (x64)
+        uses: actions/upload-artifact@v4
+        with:
+          name: archives-x64
+          path: src/dist/archives/*
+          if-no-files-found: error
+
+  build-arm64:
+    runs-on: [self-hosted, Linux, ARM64]
+    needs: prepare
+    env:
+      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+          submodules: false
+          path: src
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: false
+
+      - name: Build arm target set
+        shell: bash
+        working-directory: src
+        run: |
+          set -euo pipefail
+          mkdir -p dist/archives dist/package
+          VERSION='${{ needs.prepare.outputs.version }}'
+          json_file='.github/build/friendly-filenames.json'
+          for key in $(jq -r 'keys[]' "$json_file"); do
+            if [[ ! "$key" =~ arm|mips ]]; then
+              continue
+            fi
+            friendly=$(jq -r --arg k "$key" '.[$k].friendlyName' "$json_file")
+            os="${key%%-*}"
+            arch_variant="${key#*-}"
+            GOOS="$os"
+            GOARCH="$arch_variant"
+            unset GOARM || true
+            unset GOMIPS || true
+            case "$arch_variant" in
+              arm5) GOARCH=arm; GOARM=5 ;;
+              arm6) GOARCH=arm; GOARM=6 ;;
+              arm7) GOARCH=arm; GOARM=7 ;;
+              mipssoftfloat) GOARCH=mips; GOMIPS=softfloat ;;
+              mipslesoftfloat) GOARCH=mipsle; GOMIPS=softfloat ;;
+            esac
+            ext=""
+            if [ "$GOOS" = "windows" ]; then
+              ext=".exe"
+            fi
+            out_name="V2bX-${friendly}${ext}"
+            out_path="dist/${out_name}"
+            build_tags="sing hysteria2 with_quic with_grpc with_utls with_acme"
+            if [ "$GOOS" = "linux" ]; then
+              build_tags="$build_tags xray with_wireguard with_gvisor"
+            fi
+            env_vars=("CGO_ENABLED=0" "GOOS=$GOOS" "GOARCH=$GOARCH")
+            if [ -n "${GOARM:-}" ]; then env_vars+=("GOARM=$GOARM"); fi
+            if [ -n "${GOMIPS:-}" ]; then env_vars+=("GOMIPS=$GOMIPS"); fi
+            env "${env_vars[@]}" go build -trimpath -tags "$build_tags" -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
+            pkg_dir="dist/package/${friendly}"
+            rm -rf "$pkg_dir"
+            mkdir -p "$pkg_dir"
+            cp "$out_path" "$pkg_dir/V2bX${ext}"
+            if [ -d "example" ]; then
+              cp -a "example/." "$pkg_dir/"
+            fi
+            if [ "$GOOS" = "windows" ]; then
+              (cd "$pkg_dir" && zip -q -9 "../../archives/${out_name}.zip" ./*)
+            else
+              tar -C "$pkg_dir" -czf "dist/archives/${out_name}.tar.gz" .
+            fi
+          done
+
+      - name: Upload archives (arm)
+        uses: actions/upload-artifact@v4
+        with:
+          name: archives-arm
+          path: src/dist/archives/*
+          if-no-files-found: error
+
+  release:
+    runs-on: [self-hosted, Linux, X64]
+    needs: [prepare, build-x64, build-arm64]
+    steps:
+      - name: Download x64 archives
+        uses: actions/download-artifact@v4
+        with:
+          name: archives-x64
+          path: dist/archives
+
+      - name: Download arm archives
+        uses: actions/download-artifact@v4
+        with:
+          name: archives-arm
+          path: dist/archives
+
       - name: Create/Update GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ steps.version.outputs.tag }}
-          name: ${{ steps.version.outputs.tag }}
+          tag_name: ${{ needs.prepare.outputs.tag }}
+          name: ${{ needs.prepare.outputs.tag }}
           draft: false
           prerelease: false
           fail_on_unmatched_files: true
           files: |
-            src/dist/archives/*
+            dist/archives/*
