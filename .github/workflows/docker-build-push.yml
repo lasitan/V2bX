@@ -49,6 +49,20 @@ jobs:
           fi
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
 
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: true
+
+      - name: Sync go.mod and go.sum
+        shell: bash
+        working-directory: src
+        run: |
+          set -euo pipefail
+          go mod tidy
+          go mod download
+
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
 
