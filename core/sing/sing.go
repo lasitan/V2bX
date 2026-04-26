@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"path/filepath"
 	"sync"
 
 	"github.com/sagernet/sing-box/include"
@@ -72,7 +73,8 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 			ServerPort: c.SingConfig.NtpConfig.ServerPort,
 		},
 	}
-	os.Setenv("SING_DNS_PATH", "")
+	singCachePath := ensureSingCacheFileInConfigDir(c, &options)
+	os.Setenv("SING_DNS_PATH", singCachePath)
 	b, err := box.New(box.Options{
 		Context: ctx,
 		Options: options,
@@ -96,6 +98,23 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		nodeReportMinTrafficBytes: make(map[string]int64),
 		wsMux:                     newWsMuxManager(),
 	}, nil
+}
+
+func ensureSingCacheFileInConfigDir(c *conf.CoreConfig, options *option.Options) string {
+	if c == nil || c.SingConfig == nil || options == nil || c.SingConfig.OriginalPath == "" {
+		return ""
+	}
+	configDir := filepath.Dir(c.SingConfig.OriginalPath)
+	cachePath := filepath.Join(configDir, "cache.db")
+	if options.Experimental == nil {
+		options.Experimental = &option.ExperimentalOptions{}
+	}
+	if options.Experimental.CacheFile == nil {
+		options.Experimental.CacheFile = &option.CacheFileOptions{}
+	}
+	options.Experimental.CacheFile.Enabled = true
+	options.Experimental.CacheFile.Path = cachePath
+	return cachePath
 }
 
 func (b *Sing) Start() error {

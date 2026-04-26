@@ -39,6 +39,14 @@ jobs:
           go-version-file: src/go.mod
           cache: true
 
+      - name: Sync go.mod and go.sum
+        shell: bash
+        working-directory: src
+        run: |
+          set -euo pipefail
+          go mod tidy
+          go mod download
+
       - name: Read version
         id: version
         shell: bash
@@ -125,7 +133,7 @@ jobs:
             if [ "$GOOS" = "linux" ]; then
               build_tags="$build_tags xray with_wireguard with_gvisor"
             fi
-            env "${env_vars[@]}" go build -trimpath -tags "$build_tags" -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
+            env "${env_vars[@]}" GOFLAGS=-mod=mod go build -trimpath -tags "$build_tags" -ldflags "-s -w -X github.com/InazumaV/V2bX/cmd.version=${VERSION}" -o "$out_path" .
 
             pkg_dir="dist/package/${friendly}"
             rm -rf "$pkg_dir"

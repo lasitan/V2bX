@@ -330,6 +330,6 @@ require (
 	lukechampine.com/blake3 v1.4.1 // indirect
 )
 
-replace github.com/sagernet/sing-box v1.13.0 => github.com/wyx2685/sing-box_mod v1.13.0-alpha.5
+replace github.com/sagernet/sing-box v1.13.0 => ./sing-box_mod
 
 replace github.com/xtls/xray-core v1.250911.1-0.20250911134820-83c5370eec69 => github.com/wyx2685/xray-core v0.0.0-20250912060919-a74bf884128d
