@@ -195,6 +195,7 @@ EOF
         echo -e "${green}V2bX ${last_version}${plain} 安装完成，已设置开机自启"
     else
         rm /etc/systemd/system/V2bX.service -f
+        mkdir -p /var/log/V2bX
         cat <<EOF > /etc/systemd/system/V2bX.service
 [Unit]
 Description=V2bX Service
@@ -211,6 +212,10 @@ LimitCORE=infinity
 LimitNOFILE=999999
 WorkingDirectory=/usr/local/V2bX/
 ExecStart=/usr/local/V2bX/V2bX server
+ExecStartPre=/bin/sh -c 'rm -f /var/log/V2bX/V2bX.log* /var/log/V2bX/keep-failed.log; : > /var/log/V2bX/V2bX.log'
+# only write runtime logs into file, avoid duplicating service stdout/stderr into journal
+StandardOutput=append:/var/log/V2bX/V2bX.log
+StandardError=append:/var/log/V2bX/V2bX.log
 TimeoutStopSec=10
 TimeoutStartSec=30
 Restart=always
@@ -222,6 +227,18 @@ EOF
         systemctl daemon-reload
         systemctl stop V2bX
         systemctl enable V2bX
+        cat <<EOF > /etc/logrotate.d/V2bX
+/var/log/V2bX/V2bX.log {
+    hourly
+    rotate 7
+    compress
+    delaycompress
+    missingok
+    notifempty
+    copytruncate
+    create 0640 root root
+}
+EOF
         echo -e "${green}V2bX ${last_version}${plain} 安装完成，已设置开机自启"
     fi
 

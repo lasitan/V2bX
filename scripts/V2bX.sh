@@ -287,7 +287,15 @@ show_log() {
     if [[ x"${release}" == x"alpine" ]]; then
         echo -e "${red}alpine系统暂不支持日志查看${plain}\n" && exit 1
     else
-        journalctl -u V2bX.service -e --no-pager -f
+        local logfile="/var/log/V2bX/V2bX.log"
+        if [[ ! -f "${logfile}" ]]; then
+            echo -e "${yellow}日志文件不存在: ${logfile}${plain}"
+            echo -e "${yellow}可选查看 systemd 事件: journalctl -u V2bX.service -e --no-pager${plain}"
+            return
+        fi
+        echo -e "${green}当前仅使用 .log 文件作为运行日志来源: ${logfile}${plain}"
+        echo -e "${yellow}如需查看 systemd 事件可手动执行: journalctl -u V2bX.service -e --no-pager${plain}"
+        tail -f "${logfile}"
     fi
     if [[ $# == 0 ]]; then
         before_show_menu

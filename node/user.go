@@ -41,9 +41,6 @@ func (c *Controller) reportOnlineUsersNow() (err error) {
 			"tag": c.tag,
 			"err": err,
 		}).Info("Report online users failed")
-	} else {
-		log.WithField("tag", c.tag).Infof("Total %d online users, %d Reported", len(*onlineDevice), len(result))
-		log.WithField("tag", c.tag).Debugf("Online users: %+v", data)
 	}
 	_ = time.Now() // keep import stable if log build tags vary
 	return nil
@@ -58,9 +55,6 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 				"tag": c.tag,
 				"err": err,
 			}).Info("Report user traffic failed")
-		} else {
-			log.WithField("tag", c.tag).Infof("Report %d users traffic", len(userTraffic))
-			log.WithField("tag", c.tag).Debugf("User traffic: %+v", userTraffic)
 		}
 	}
 
