@@ -238,7 +238,19 @@ func (s *wsMuxServer) handleConn(c net.Conn) {
 		closeWrite(c)
 		errCh <- e
 	}()
-	<-errCh
+	err1 := <-errCh
+	err2 := <-errCh
+	if relayErrorUnexpected(err1) && relayErrorUnexpected(err2) {
+		log.WithFields(log.Fields{
+			"listen_ip": s.key.listenIP,
+			"port":      s.key.port,
+			"host":      host,
+			"path":      path,
+			"backend":   route.backendAddr,
+			"err1":      err1,
+			"err2":      err2,
+		}).Debug("ws mux relay closed with errors")
+	}
 }
 
 // relayStream avoids io.Copy's splice fast-path on Linux kernels where
@@ -275,6 +287,13 @@ func closeWrite(conn net.Conn) {
 	if tcpConn, ok := conn.(*net.TCPConn); ok {
 		_ = tcpConn.CloseWrite()
 	}
+}
+
+func relayErrorUnexpected(err error) bool {
+	if err == nil || errors.Is(err, io.EOF) {
+		return false
+	}
+	return !errors.Is(err, net.ErrClosed)
 }
 
 func readHTTPHeader(br *bufio.Reader) (raw []byte, host string, path string, err error) {
