@@ -17,8 +17,39 @@ env:
   IMAGE_NAME: ${{ github.repository_owner }}/v2bx
 
 jobs:
-  build-and-push:
-    runs-on: [self-hosted, Linux, ARM64]
+  prepare:
+    runs-on: [self-hosted, Linux, X64]
+    outputs:
+      tag: ${{ steps.version.outputs.tag }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+          submodules: false
+          path: src
+
+      - name: Read version
+        id: version
+        shell: bash
+        run: |
+          set -euo pipefail
+          VERSION="$(tr -d '\r\n\t ' < src/.github/build/version.txt)"
+          if [ -z "$VERSION" ]; then
+            echo "version.txt is empty" >&2
+            exit 1
+          fi
+          if [[ "$VERSION" == v* ]]; then
+            TAG="$VERSION"
+          else
+            TAG="v$VERSION"
+          fi
+          echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+
+  build-amd64:
+    needs: prepare
+    runs-on: [self-hosted, Linux, X64]
     env:
       http_proxy: ""
       https_proxy: ""
@@ -53,7 +84,7 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version-file: src/go.mod
-          cache: true
+          cache: false
 
       - name: Sync go.mod and go.sum
         shell: bash
@@ -63,21 +94,8 @@ jobs:
           go mod tidy
           go mod download
 
-      - name: Set up QEMU
-        uses: docker/setup-qemu-action@v3
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
-
-      - name: Docker meta
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}
-          tags: |
-            type=raw,value=${{ steps.version.outputs.tag }}
-            type=ref,event=branch
-            type=sha
 
       - name: Login to GitHub Container Registry
         uses: docker/login-action@v3
@@ -86,13 +104,84 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and push amd64
         uses: docker/build-push-action@v6
         with:
           context: ./src
-          platforms: linux/amd64,linux/arm64
+          platforms: linux/amd64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.tag }}-amd64
+
+  build-arm64:
+    needs: prepare
+    runs-on: [self-hosted, Linux, ARM64]
+    env:
+      http_proxy: ""
+      https_proxy: ""
+      no_proxy: ""
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          clean: false
+          fetch-depth: 1
+          submodules: false
+          path: src
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: src/go.mod
+          cache: false
+
+      - name: Sync go.mod and go.sum
+        shell: bash
+        working-directory: src
+        run: |
+          set -euo pipefail
+          go mod tidy
+          go mod download
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push arm64
+        uses: docker/build-push-action@v6
+        with:
+          context: ./src
+          platforms: linux/arm64
+          push: true
+          tags: |
+            ${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}:${{ needs.prepare.outputs.tag }}-arm64
+
+  release:
+    needs: [prepare, build-amd64, build-arm64]
+    runs-on: [self-hosted, Linux, ARM64]
+    steps:
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Create and push multi-arch manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+          IMAGE="${{ env.REGISTRY }}/${{ env.IMAGE_NAME }}"
+          TAG="${{ needs.prepare.outputs.tag }}"
+          docker buildx imagetools create -t "${IMAGE}:${TAG}" \
+            "${IMAGE}:${TAG}-amd64" \
+            "${IMAGE}:${TAG}-arm64"
