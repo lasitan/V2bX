@@ -16,6 +16,7 @@ import (
 type Controller struct {
 	server                    vCore.Core
 	apiClient                 *panel.Client
+	userCache                 *userCacheStore
 	tag                       string
 	limiter                   *limiter.Limiter
 	traffic                   map[string]int64
@@ -61,17 +62,49 @@ func (c *Controller) Start() error {
 	if err != nil {
 		return fmt.Errorf("获取节点信息失败: %s", err)
 	}
-	// Update user
-	c.userList, err = c.apiClient.GetUserList()
-	if err != nil {
-		return fmt.Errorf("获取用户列表失败: %s", err)
+
+	c.userCache = newUserCacheStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
+	cachedUsers, cacheErr := c.userCache.Load()
+	if cacheErr != nil {
+		log.WithFields(log.Fields{
+			"api_host": c.apiClient.APIHost,
+			"node_id":  c.apiClient.NodeId,
+			"err":      cacheErr,
+		}).Warn("用户缓存读取失败")
 	}
-	if len(c.userList) == 0 {
-		return errors.New("添加用户失败: 面板未返回任何用户")
+
+	// fetch full users from panel; startup can continue with cache when panel is temporarily unavailable
+	pulledUsers, pullErr := c.apiClient.GetUserList()
+	if pullErr != nil {
+		log.WithFields(log.Fields{
+			"api_host": c.apiClient.APIHost,
+			"node_id":  c.apiClient.NodeId,
+			"err":      pullErr,
+		}).Warn("拉取用户列表失败，尝试使用本地缓存启动")
 	}
+
+	useCacheFirst := len(cachedUsers) > 0
+	if useCacheFirst {
+		c.userList = cachedUsers
+	} else if pullErr == nil && len(pulledUsers) > 0 {
+		c.userList = pulledUsers
+		if c.userCache != nil {
+			_ = c.userCache.SaveAll(c.userList)
+		}
+	} else if pullErr != nil {
+		return fmt.Errorf("获取用户列表失败且缓存为空: %s", pullErr)
+	} else {
+		return errors.New("添加用户失败: 面板未返回任何用户且缓存为空")
+	}
+
 	c.aliveMap, err = c.apiClient.GetUserAlive()
 	if err != nil {
-		return fmt.Errorf("获取用户在线列表失败: %s", err)
+		log.WithFields(log.Fields{
+			"api_host": c.apiClient.APIHost,
+			"node_id":  c.apiClient.NodeId,
+			"err":      err,
+		}).Warn("获取用户在线列表失败，使用空在线列表继续")
+		c.aliveMap = make(map[int]int)
 	}
 	if len(c.Options.Name) == 0 {
 		c.tag = c.buildNodeTag(node)
@@ -117,6 +150,19 @@ func (c *Controller) Start() error {
 	log.WithField("tag", c.tag).Infof("拉取到 %d 个新用户", added)
 	c.info = node
 	c.startTasks(node)
+
+	// Startup path: run with cache first, then hot switch to freshly pulled full snapshot.
+	if useCacheFirst && pullErr == nil && len(pulledUsers) > 0 {
+		if err = c.applyUserSnapshot(pulledUsers); err != nil {
+			log.WithFields(log.Fields{
+				"tag": c.tag,
+				"err": err,
+			}).Warn("缓存切换到最新用户失败")
+		} else {
+			log.WithField("tag", c.tag).Info("已从缓存用户切换到主控最新用户")
+		}
+	}
+
 	return nil
 }
 

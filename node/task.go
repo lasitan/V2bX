@@ -55,6 +55,41 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 	}
 }
 
+func (c *Controller) applyUserSnapshot(newU []panel.UserInfo) error {
+	// Full replacement strategy:
+	// remove all old users on node first, then add the full latest list from panel.
+	oldUsers := c.userList
+	if len(oldUsers) > 0 {
+		if err := c.server.DelUsers(oldUsers, c.tag, c.info); err != nil {
+			return err
+		}
+	}
+	if len(newU) > 0 {
+		if _, err := c.server.AddUsers(&vCore.AddUsersParams{
+			Tag:      c.tag,
+			NodeInfo: c.info,
+			Users:    newU,
+		}); err != nil {
+			return err
+		}
+	}
+	deleted, added := compareUserList(oldUsers, newU)
+	if len(added) > 0 || len(deleted) > 0 {
+		c.limiter.UpdateUser(c.tag, added, deleted)
+		if c.LimitConfig.EnableDynamicSpeedLimit {
+			for i := range deleted {
+				delete(c.traffic, deleted[i].Uuid)
+			}
+		}
+	}
+	c.userList = newU
+	if c.userCache != nil {
+		_ = c.userCache.SaveAll(c.userList)
+	}
+	log.WithField("tag", c.tag).Infof("用户快照已全量覆盖，删除 %d 个用户，新增 %d 个用户", len(deleted), len(added))
+	return nil
+}
+
 func (c *Controller) nodeInfoMonitor() (err error) {
 	// get node info
 	newN, err := c.apiClient.GetNodeInfo()
@@ -156,6 +191,9 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 			}).Error("Add users failed")
 			return nil
 		}
+		if c.userCache != nil {
+			_ = c.userCache.SaveAll(c.userList)
+		}
 		// Check interval
 		if c.nodeInfoMonitorPeriodic.Interval != newN.PullInterval &&
 			newN.PullInterval != 0 {
@@ -181,54 +219,11 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	if len(newU) == 0 {
 		return nil
 	}
-	deleted, added := compareUserList(c.userList, newU)
-	if len(deleted) > 0 {
-		// have deleted users
-		err = c.server.DelUsers(deleted, c.tag, c.info)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("Delete users failed")
-			return nil
-		}
-	}
-	if len(added) > 0 {
-		// have added users
-		_, err = c.server.AddUsers(&vCore.AddUsersParams{
-			Tag:      c.tag,
-			NodeInfo: c.info,
-			Users:    added,
-		})
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("Add users failed")
-			return nil
-		}
-	}
-	if len(added) > 0 || len(deleted) > 0 {
-		// update Limiter
-		c.limiter.UpdateUser(c.tag, added, deleted)
-		if err != nil {
-			log.WithFields(log.Fields{
-				"tag": c.tag,
-				"err": err,
-			}).Error("limiter users failed")
-			return nil
-		}
-		// clear traffic record
-		if c.LimitConfig.EnableDynamicSpeedLimit {
-			for i := range deleted {
-				delete(c.traffic, deleted[i].Uuid)
-			}
-		}
-	}
-	c.userList = newU
-	if len(added)+len(deleted) != 0 {
-		log.WithField("tag", c.tag).
-			Infof("删除 %d 个用户，新增 %d 个用户", len(deleted), len(added))
+	if err = c.applyUserSnapshot(newU); err != nil {
+		log.WithFields(log.Fields{
+			"tag": c.tag,
+			"err": err,
+		}).Error("全量覆盖用户失败")
 	}
 	return nil
 }
