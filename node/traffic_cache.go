@@ -31,6 +31,31 @@ type trafficCacheStore struct {
 	mu   sync.Mutex
 }
 
+func mergeTrafficCacheItems(items []trafficCacheItem) []trafficCacheItem {
+	acc := make(map[int]trafficCacheItem, len(items))
+	for _, it := range items {
+		if it.UID <= 0 {
+			continue
+		}
+		cur := acc[it.UID]
+		cur.UID = it.UID
+		cur.Upload += it.Upload
+		cur.Download += it.Download
+		if cur.Status == "" {
+			cur.Status = "pending"
+		}
+		acc[it.UID] = cur
+	}
+	out := make([]trafficCacheItem, 0, len(acc))
+	for _, it := range acc {
+		if it.Upload == 0 && it.Download == 0 {
+			continue
+		}
+		out = append(out, it)
+	}
+	return out
+}
+
 func newTrafficCacheStore(apiHost, nodeType string, nodeID int) *trafficCacheStore {
 	name := sanitizeCacheKey(apiHost + "_" + nodeType + "_" + strconv.Itoa(nodeID))
 	path := filepath.Join("/etc/V2bX", "cache", "traffic_"+name+".db")
@@ -68,6 +93,7 @@ func (s *trafficCacheStore) LoadPending() ([]panel.UserTraffic, error) {
 	if err = json.Unmarshal(raw, &payload); err != nil {
 		return nil, err
 	}
+	payload.Items = mergeTrafficCacheItems(payload.Items)
 	out := make([]panel.UserTraffic, 0, len(payload.Items))
 	for _, it := range payload.Items {
 		if it.UID <= 0 || (it.Upload == 0 && it.Download == 0) {
@@ -105,6 +131,7 @@ func (s *trafficCacheStore) SavePending(items []panel.UserTraffic) error {
 			Status:   "pending",
 		})
 	}
+	payload.Items = mergeTrafficCacheItems(payload.Items)
 	return s.savePayload(payload)
 }
 

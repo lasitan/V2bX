@@ -10,6 +10,8 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const chainFailResetThreshold = 5
+
 func (c *Controller) startTasks(node *panel.NodeInfo) {
 	// fetch node info task
 	c.nodeInfoMonitorPeriodic = &task.Task{
@@ -91,32 +93,58 @@ func (c *Controller) applyUserSnapshot(newU []panel.UserInfo) error {
 }
 
 func (c *Controller) nodeInfoMonitor() (err error) {
-	// get node info
-	newN, err := c.apiClient.GetNodeInfo()
-	if err != nil {
+	// Pull chains are independent:
+	// a failure on one chain should not block other chains in this round.
+	newN, nodeErr := c.apiClient.GetNodeInfo()
+	if nodeErr != nil {
+		c.nodeInfoFailCount++
 		log.WithFields(log.Fields{
-			"tag": c.tag,
-			"err": err,
+			"tag":      c.tag,
+			"err":      nodeErr,
+			"chain":    "node_info",
+			"fail_seq": c.nodeInfoFailCount,
 		}).Error("Get node info failed")
-		return nil
+		if c.nodeInfoFailCount >= chainFailResetThreshold {
+			c.apiClient.ResetNodeInfoChain()
+			c.nodeInfoFailCount = 0
+			log.WithField("tag", c.tag).Warn("node_info chain reset after repeated failures")
+		}
+	} else {
+		c.nodeInfoFailCount = 0
 	}
-	// get user info
-	newU, err := c.apiClient.GetUserList()
-	if err != nil {
+	newU, userErr := c.apiClient.GetUserList()
+	if userErr != nil {
+		c.userListFailCount++
 		log.WithFields(log.Fields{
-			"tag": c.tag,
-			"err": err,
+			"tag":      c.tag,
+			"err":      userErr,
+			"chain":    "user_list",
+			"fail_seq": c.userListFailCount,
 		}).Error("Get user list failed")
-		return nil
+		if c.userListFailCount >= chainFailResetThreshold {
+			c.apiClient.ResetUserListChain()
+			c.userListFailCount = 0
+			log.WithField("tag", c.tag).Warn("user_list chain reset after repeated failures")
+		}
+	} else {
+		c.userListFailCount = 0
 	}
-	// get user alive
-	newA, err := c.apiClient.GetUserAlive()
-	if err != nil {
+	newA, aliveErr := c.apiClient.GetUserAlive()
+	if aliveErr != nil {
+		c.aliveListFailCount++
 		log.WithFields(log.Fields{
-			"tag": c.tag,
-			"err": err,
+			"tag":      c.tag,
+			"err":      aliveErr,
+			"chain":    "alive_list",
+			"fail_seq": c.aliveListFailCount,
 		}).Error("Get alive list failed")
-		return nil
+		if c.aliveListFailCount >= chainFailResetThreshold {
+			c.apiClient.ResetAliveChain()
+			c.aliveListFailCount = 0
+			log.WithField("tag", c.tag).Warn("alive_list chain reset after repeated failures")
+		}
+	} else {
+		c.aliveListFailCount = 0
 	}
 	if newN != nil {
 		c.info = newN
@@ -216,7 +244,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		c.limiter.AliveList = newA
 	}
 	// node no changed, check users
-	if len(newU) == 0 {
+	if userErr != nil || len(newU) == 0 {
 		return nil
 	}
 	if err = c.applyUserSnapshot(newU); err != nil {

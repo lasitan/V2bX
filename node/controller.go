@@ -31,6 +31,10 @@ type Controller struct {
 	onlineIpReportPeriodic    *task.Task
 	onlineReportCh            chan struct{}
 	onlineReportStopCh        chan struct{}
+	nodeInfoFailCount         int
+	userListFailCount         int
+	aliveListFailCount        int
+	trafficReportFailCount    int
 	*conf.Options
 }
 

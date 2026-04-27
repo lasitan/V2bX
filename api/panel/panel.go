@@ -34,6 +34,35 @@ type Client struct {
 	AliveMap         *AliveMap
 }
 
+func (c *Client) closeIdleConnections() {
+	if c == nil || c.client == nil {
+		return
+	}
+	if hc := c.client.GetClient(); hc != nil {
+		hc.CloseIdleConnections()
+	}
+}
+
+func (c *Client) ResetNodeInfoChain() {
+	c.nodeEtag = ""
+	c.responseBodyHash = ""
+	c.closeIdleConnections()
+}
+
+func (c *Client) ResetUserListChain() {
+	c.userEtag = ""
+	c.closeIdleConnections()
+}
+
+func (c *Client) ResetAliveChain() {
+	c.AliveMap = &AliveMap{}
+	c.closeIdleConnections()
+}
+
+func (c *Client) ResetTrafficReportChain() {
+	c.closeIdleConnections()
+}
+
 func New(c *conf.ApiConfig) (*Client, error) {
 	client := resty.New()
 	client.SetRetryCount(3)

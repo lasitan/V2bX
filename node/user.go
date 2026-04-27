@@ -63,6 +63,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 	if len(mergedTraffic) > 0 {
 		err = c.apiClient.ReportUserTraffic(mergedTraffic)
 		if err != nil {
+			c.trafficReportFailCount++
 			if c.trafficCache != nil {
 				_ = c.trafficCache.SavePending(mergedTraffic)
 			}
@@ -71,8 +72,16 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 				"err":      err,
 				"cache":    "pending",
 				"cache_db": "traffic",
+				"chain":    "traffic_report",
+				"fail_seq": c.trafficReportFailCount,
 			}).Info("Report user traffic failed, saved to local DB")
+			if c.trafficReportFailCount >= chainFailResetThreshold {
+				c.apiClient.ResetTrafficReportChain()
+				c.trafficReportFailCount = 0
+				log.WithField("tag", c.tag).Warn("traffic_report chain reset after repeated failures")
+			}
 		} else if c.trafficCache != nil {
+			c.trafficReportFailCount = 0
 			_ = c.trafficCache.ClearReported()
 		}
 	}
