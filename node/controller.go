@@ -3,6 +3,7 @@ package node
 import (
 	"errors"
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/InazumaV/V2bX/api/panel"
@@ -63,11 +64,6 @@ func (c *Controller) Start() error {
 		}
 	}()
 
-	node, err := c.apiClient.GetNodeInfo()
-	if err != nil {
-		return fmt.Errorf("获取节点信息失败: %s", err)
-	}
-
 	c.userCache = newUserCacheStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
 	c.trafficCache = newTrafficCacheStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
 	cachedUsers, cacheErr := c.userCache.Load()
@@ -79,8 +75,32 @@ func (c *Controller) Start() error {
 		}).Warn("用户缓存读取失败")
 	}
 
-	// fetch full users from panel; startup can continue with cache when panel is temporarily unavailable
-	pulledUsers, pullErr := c.apiClient.GetUserList()
+	var (
+		node       *panel.NodeInfo
+		pulledUsers []panel.UserInfo
+		pullErr    error
+		aliveErr   error
+	)
+	var startWG sync.WaitGroup
+	startWG.Add(3)
+	go func() {
+		defer startWG.Done()
+		node, err = c.apiClient.GetNodeInfo()
+	}()
+	go func() {
+		defer startWG.Done()
+		// fetch full users from panel; startup can continue with cache when panel is temporarily unavailable
+		pulledUsers, pullErr = c.apiClient.GetUserList()
+	}()
+	go func() {
+		defer startWG.Done()
+		c.aliveMap, aliveErr = c.apiClient.GetUserAlive()
+	}()
+	startWG.Wait()
+
+	if err != nil {
+		return fmt.Errorf("获取节点信息失败: %s", err)
+	}
 	if pullErr != nil {
 		log.WithFields(log.Fields{
 			"api_host": c.apiClient.APIHost,
@@ -103,12 +123,11 @@ func (c *Controller) Start() error {
 		return errors.New("添加用户失败: 面板未返回任何用户且缓存为空")
 	}
 
-	c.aliveMap, err = c.apiClient.GetUserAlive()
-	if err != nil {
+	if aliveErr != nil {
 		log.WithFields(log.Fields{
 			"api_host": c.apiClient.APIHost,
 			"node_id":  c.apiClient.NodeId,
-			"err":      err,
+			"err":      aliveErr,
 		}).Warn("获取用户在线列表失败，使用空在线列表继续")
 		c.aliveMap = make(map[int]int)
 	}

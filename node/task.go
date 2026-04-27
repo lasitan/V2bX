@@ -1,6 +1,7 @@
 package node
 
 import (
+	"sync"
 	"time"
 
 	"github.com/InazumaV/V2bX/api/panel"
@@ -97,7 +98,30 @@ func (c *Controller) applyUserSnapshot(newU []panel.UserInfo) error {
 func (c *Controller) nodeInfoMonitor() (err error) {
 	// Pull chains are independent:
 	// a failure on one chain should not block other chains in this round.
-	newN, nodeErr := c.apiClient.GetNodeInfo()
+	var (
+		newN     *panel.NodeInfo
+		newU     []panel.UserInfo
+		newA     map[int]int
+		nodeErr  error
+		userErr  error
+		aliveErr error
+	)
+	var pullWG sync.WaitGroup
+	pullWG.Add(3)
+	go func() {
+		defer pullWG.Done()
+		newN, nodeErr = c.apiClient.GetNodeInfo()
+	}()
+	go func() {
+		defer pullWG.Done()
+		newU, userErr = c.apiClient.GetUserList()
+	}()
+	go func() {
+		defer pullWG.Done()
+		newA, aliveErr = c.apiClient.GetUserAlive()
+	}()
+	pullWG.Wait()
+
 	if nodeErr != nil {
 		c.nodeInfoFailCount++
 		log.WithFields(log.Fields{
@@ -114,7 +138,6 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	} else {
 		c.nodeInfoFailCount = 0
 	}
-	newU, userErr := c.apiClient.GetUserList()
 	if userErr != nil {
 		c.userListFailCount++
 		log.WithFields(log.Fields{
@@ -131,7 +154,6 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 	} else {
 		c.userListFailCount = 0
 	}
-	newA, aliveErr := c.apiClient.GetUserAlive()
 	if aliveErr != nil {
 		c.aliveListFailCount++
 		log.WithFields(log.Fields{

@@ -3,7 +3,6 @@ package cmd
 import (
 	"os"
 	"os/signal"
-	"runtime"
 	"syscall"
 	"time"
 
@@ -110,7 +109,6 @@ func serverHandle(_ *cobra.Command, _ []string) {
 				return
 			}
 			log.Info("Nodes restarted")
-			runtime.GC()
 		})
 		if err != nil {
 			log.WithField("err", err).Error("start watch failed")
@@ -119,8 +117,6 @@ func serverHandle(_ *cobra.Command, _ []string) {
 			return
 		}
 	}
-	// clear memory
-	runtime.GC()
 	// wait exit signal
 	{
 		osSignals := make(chan os.Signal, 1)
