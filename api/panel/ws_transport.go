@@ -1,6 +1,7 @@
 package panel
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"strings"
@@ -11,40 +12,58 @@ import (
 )
 
 func (c *Client) doRequest(method, path string, headers map[string]string, body []byte) (status int, respHeaders map[string][]string, respBody []byte, usedWS bool, err error) {
-	r := c.client.R()
-	// Reporting endpoints can be slower than config/list pulls; use a larger request timeout
-	// and retry budget to avoid transient panel latency causing cascading failures.
-	if strings.EqualFold(method, http.MethodPost) &&
-		(path == "/api/v1/server/UniProxy/push" || path == "/api/v1/server/UniProxy/alive") {
-		timeout := 45 * time.Second
-		if c.timeout > 0 && c.timeout > timeout {
-			timeout = c.timeout
+	isReportPath := strings.EqualFold(method, http.MethodPost) &&
+		(path == "/api/v1/server/UniProxy/push" || path == "/api/v1/server/UniProxy/alive")
+
+	maxAttempts := 1
+	reqTimeout := c.timeout
+	if reqTimeout <= 0 {
+		reqTimeout = 5 * time.Second
+	}
+	if isReportPath {
+		maxAttempts = 5
+		if reqTimeout < 45*time.Second {
+			reqTimeout = 45 * time.Second
 		}
-		r.SetTimeout(timeout)
-		r.SetRetryCount(5)
-	} else if c.timeout > 0 {
-		r.SetTimeout(c.timeout)
-	}
-	for k, v := range headers {
-		r.SetHeader(k, v)
-	}
-	if body != nil {
-		r.SetBody(body)
 	}
 
 	var resp *resty.Response
-	switch strings.ToUpper(method) {
-	case http.MethodGet:
-		resp, err = r.Get(path)
-	case http.MethodPost:
-		resp, err = r.Post(path)
-	default:
-		return 0, nil, nil, false, fmt.Errorf("unsupported method: %s", method)
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		r := c.client.R()
+		for k, v := range headers {
+			r.SetHeader(k, v)
+		}
+		if body != nil {
+			r.SetBody(body)
+		}
+		ctx, cancel := context.WithTimeout(context.Background(), reqTimeout)
+		r.SetContext(ctx)
+		switch strings.ToUpper(method) {
+		case http.MethodGet:
+			resp, err = r.Get(path)
+		case http.MethodPost:
+			resp, err = r.Post(path)
+		default:
+			cancel()
+			return 0, nil, nil, false, fmt.Errorf("unsupported method: %s", method)
+		}
+		cancel()
+
+		shouldRetry := false
+		if err != nil {
+			shouldRetry = true
+			if hc := c.client.GetClient(); hc != nil {
+				hc.CloseIdleConnections()
+			}
+		} else if resp != nil && (resp.StatusCode() >= http.StatusInternalServerError || resp.StatusCode() == http.StatusTooManyRequests) {
+			shouldRetry = attempt < maxAttempts
+		}
+		if !shouldRetry || attempt == maxAttempts {
+			break
+		}
+		time.Sleep(250 * time.Millisecond)
 	}
 	if err != nil {
-		if hc := c.client.GetClient(); hc != nil {
-			hc.CloseIdleConnections()
-		}
 		return 0, nil, nil, false, err
 	}
 	if resp == nil {
