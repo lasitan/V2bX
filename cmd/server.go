@@ -128,7 +128,7 @@ func serverHandle(_ *cobra.Command, _ []string) {
 		<-osSignals
 	}
 
-	shutdownTimeout := 10 * time.Second
+	shutdownTimeout := 3 * time.Second
 	shutdownDone := make(chan struct{})
 	go func() {
 		defer close(shutdownDone)

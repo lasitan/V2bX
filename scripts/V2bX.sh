@@ -187,9 +187,7 @@ start() {
         else
             systemctl start V2bX
         fi
-        sleep 2
-        check_status
-        if [[ $? == 0 ]]; then
+        if wait_for_status 0 20 0.1; then
             echo -e "${green}V2bX 启动成功，请使用 V2bX log 查看运行日志${plain}"
         else
             echo -e "${red}V2bX可能启动失败，请稍后使用 V2bX log 查看日志信息${plain}"
@@ -207,17 +205,32 @@ stop() {
     else
         systemctl stop V2bX
     fi
-    sleep 2
-    check_status
-    if [[ $? == 1 ]]; then
+    if wait_for_status 1 20 0.1; then
         echo -e "${green}V2bX 停止成功${plain}"
     else
-        echo -e "${red}V2bX停止失败，可能是因为停止时间超过了两秒，请稍后查看日志信息${plain}"
+        echo -e "${red}V2bX停止失败，请稍后查看日志信息${plain}"
     fi
 
     if [[ $# == 0 ]]; then
         before_show_menu
     fi
+}
+
+wait_for_status() {
+    local target="$1"
+    local max_attempts="${2:-20}"
+    local interval="${3:-0.1}"
+    local i=0
+    while [[ $i -lt $max_attempts ]]; do
+        check_status
+        local st=$?
+        if [[ "$st" == "$target" ]]; then
+            return 0
+        fi
+        sleep "$interval"
+        i=$((i + 1))
+    done
+    return 1
 }
 
 restart() {
@@ -226,9 +239,7 @@ restart() {
     else
         systemctl restart V2bX
     fi
-    sleep 2
-    check_status
-    if [[ $? == 0 ]]; then
+    if wait_for_status 0 20 0.1; then
         echo -e "${green}V2bX 重启成功，请使用 V2bX log 查看运行日志${plain}"
     else
         echo -e "${red}V2bX可能启动失败，请稍后使用 V2bX log 查看日志信息${plain}"

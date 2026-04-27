@@ -216,10 +216,10 @@ ExecStartPre=/bin/sh -c 'rm -f /var/log/V2bX/V2bX.log* /var/log/V2bX/keep-failed
 # only write runtime logs into file, avoid duplicating service stdout/stderr into journal
 StandardOutput=append:/var/log/V2bX/V2bX.log
 StandardError=append:/var/log/V2bX/V2bX.log
-TimeoutStopSec=10
-TimeoutStartSec=30
+TimeoutStopSec=3
+TimeoutStartSec=8
 Restart=always
-RestartSec=10
+RestartSec=1
 
 [Install]
 WantedBy=multi-user.target
@@ -253,7 +253,7 @@ EOF
         else
             systemctl start V2bX
         fi
-        sleep 2
+        sleep 1
         check_status
         echo -e ""
         if [[ $? == 0 ]]; then
