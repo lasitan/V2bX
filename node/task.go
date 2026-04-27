@@ -88,7 +88,9 @@ func (c *Controller) applyUserSnapshot(newU []panel.UserInfo) error {
 	if c.userCache != nil {
 		_ = c.userCache.SaveAll(c.userList)
 	}
-	log.WithField("tag", c.tag).Infof("用户快照已全量覆盖，删除 %d 个用户，新增 %d 个用户", len(deleted), len(added))
+	if len(added) > 0 || len(deleted) > 0 {
+		log.WithField("tag", c.tag).Infof("用户快照已全量覆盖，删除 %d 个用户，新增 %d 个用户", len(deleted), len(added))
+	}
 	return nil
 }
 
