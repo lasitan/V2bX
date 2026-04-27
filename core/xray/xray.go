@@ -3,6 +3,7 @@ package xray
 import (
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"encoding/json"
@@ -73,7 +74,7 @@ func getCore(c *conf.XrayConfig) *core.Instance {
 	os.Setenv("XRAY_LOCATION_ASSET", c.AssetPath)
 	// Log Config
 	coreLogConfig := &coreConf.LogConfig{
-		LogLevel:  c.LogConfig.Level,
+		LogLevel:  normalizeXrayLogLevel(c.LogConfig.Level),
 		AccessLog: c.LogConfig.AccessPath,
 		ErrorLog:  c.LogConfig.ErrorPath,
 	}
@@ -221,4 +222,18 @@ func (c *Xray) Protocols() []string {
 
 func (c *Xray) Type() string {
 	return "xray"
+}
+
+func normalizeXrayLogLevel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug", "info", "":
+		// Avoid verbose per-connection access logs caused by low log levels.
+		return "warning"
+	case "warn":
+		return "warning"
+	case "warning", "error":
+		return strings.ToLower(strings.TrimSpace(level))
+	default:
+		return "warning"
+	}
 }

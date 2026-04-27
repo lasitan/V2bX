@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"sync"
 
 	"github.com/sagernet/sing-box/include"
@@ -60,7 +61,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	}
 	options.Log = &option.LogOptions{
 		Disabled:  c.SingConfig.LogConfig.Disabled,
-		Level:     c.SingConfig.LogConfig.Level,
+		Level:     normalizeCoreLogLevel(c.SingConfig.LogConfig.Level),
 		Timestamp: c.SingConfig.LogConfig.Timestamp,
 		Output:    c.SingConfig.LogConfig.Output,
 	}
@@ -96,6 +97,20 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		nodeReportMinTrafficBytes: make(map[string]int64),
 		wsMux:                     newWsMuxManager(),
 	}, nil
+}
+
+func normalizeCoreLogLevel(level string) string {
+	switch strings.ToLower(strings.TrimSpace(level)) {
+	case "debug", "info", "":
+		// Suppress noisy per-connection logs by default.
+		return "warn"
+	case "warning":
+		return "warn"
+	case "warn", "error":
+		return strings.ToLower(strings.TrimSpace(level))
+	default:
+		return "warn"
+	}
 }
 
 func (b *Sing) Start() error {
