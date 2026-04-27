@@ -3,6 +3,7 @@ package panel
 import (
 	"errors"
 	"fmt"
+	"net/http"
 	"strconv"
 	"strings"
 	"sync"
@@ -36,6 +37,17 @@ type Client struct {
 func New(c *conf.ApiConfig) (*Client, error) {
 	client := resty.New()
 	client.SetRetryCount(3)
+	client.SetRetryWaitTime(300 * time.Millisecond)
+	client.SetRetryMaxWaitTime(2 * time.Second)
+	client.AddRetryCondition(func(resp *resty.Response, err error) bool {
+		if err != nil {
+			return true
+		}
+		if resp == nil {
+			return true
+		}
+		return resp.StatusCode() >= http.StatusInternalServerError || resp.StatusCode() == http.StatusTooManyRequests
+	})
 	var timeout time.Duration
 	if c.Timeout > 0 {
 		timeout = time.Duration(c.Timeout) * time.Second
@@ -53,6 +65,15 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		}
 	})
 	client.SetBaseURL(c.APIHost)
+	client.SetTransport(&http.Transport{
+		Proxy:                 http.ProxyFromEnvironment,
+		MaxIdleConns:          100,
+		MaxIdleConnsPerHost:   20,
+		IdleConnTimeout:       30 * time.Second,
+		TLSHandshakeTimeout:   5 * time.Second,
+		ExpectContinueTimeout: 1 * time.Second,
+		ForceAttemptHTTP2:     true,
+	})
 	// Check node type
 	c.NodeType = strings.ToLower(c.NodeType)
 	switch c.NodeType {

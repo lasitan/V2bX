@@ -17,6 +17,7 @@ type Controller struct {
 	server                    vCore.Core
 	apiClient                 *panel.Client
 	userCache                 *userCacheStore
+	trafficCache              *trafficCacheStore
 	tag                       string
 	limiter                   *limiter.Limiter
 	traffic                   map[string]int64
@@ -64,6 +65,7 @@ func (c *Controller) Start() error {
 	}
 
 	c.userCache = newUserCacheStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
+	c.trafficCache = newTrafficCacheStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
 	cachedUsers, cacheErr := c.userCache.Load()
 	if cacheErr != nil {
 		log.WithFields(log.Fields{

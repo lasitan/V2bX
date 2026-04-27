@@ -47,20 +47,40 @@ func (c *Controller) reportOnlineUsersNow() (err error) {
 }
 
 func (c *Controller) reportUserTrafficTask() (err error) {
-	userTraffic, _ := c.server.GetUserTrafficSlice(c.tag, true)
-	if len(userTraffic) > 0 {
-		err = c.apiClient.ReportUserTraffic(userTraffic)
-		if err != nil {
+	currentTraffic, _ := c.server.GetUserTrafficSlice(c.tag, true)
+	pendingTraffic := make([]panel.UserTraffic, 0)
+	if c.trafficCache != nil {
+		if cached, cacheErr := c.trafficCache.LoadPending(); cacheErr != nil {
 			log.WithFields(log.Fields{
 				"tag": c.tag,
-				"err": err,
-			}).Info("Report user traffic failed")
+				"err": cacheErr,
+			}).Warn("Load pending traffic cache failed")
+		} else {
+			pendingTraffic = cached
+		}
+	}
+	mergedTraffic := mergeUserTraffic(pendingTraffic, currentTraffic)
+	if len(mergedTraffic) > 0 {
+		err = c.apiClient.ReportUserTraffic(mergedTraffic)
+		if err != nil {
+			if c.trafficCache != nil {
+				_ = c.trafficCache.SavePending(mergedTraffic)
+			}
+			log.WithFields(log.Fields{
+				"tag":      c.tag,
+				"err":      err,
+				"cache":    "pending",
+				"cache_db": "traffic",
+			}).Info("Report user traffic failed, saved to local DB")
+		} else if c.trafficCache != nil {
+			_ = c.trafficCache.ClearReported()
 		}
 	}
 
 	_ = c.reportOnlineUsersNow()
 
-	userTraffic = nil
+	currentTraffic = nil
+	mergedTraffic = nil
 	return nil
 }
 

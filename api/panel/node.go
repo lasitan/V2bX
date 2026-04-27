@@ -158,6 +158,9 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 	if status == 304 {
 		return nil, nil
 	}
+	if err = c.checkResponseRaw(path, status, body, err); err != nil {
+		return nil, err
+	}
 	hash := sha256.Sum256(body)
 	newBodyHash := hex.EncodeToString(hash[:])
 	if c.responseBodyHash == newBodyHash {
@@ -168,9 +171,6 @@ func (c *Client) GetNodeInfo() (node *NodeInfo, err error) {
 		if v, ok := headers["ETag"]; ok && len(v) > 0 {
 			c.nodeEtag = v[0]
 		}
-	}
-	if err = c.checkResponseRaw(path, status, body, err); err != nil {
-		return nil, err
 	}
 	node = &NodeInfo{
 		Id:   c.NodeId,

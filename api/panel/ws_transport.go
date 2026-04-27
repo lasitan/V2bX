@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"strings"
+	"time"
 
 	"github.com/go-resty/resty/v2"
 	"github.com/sirupsen/logrus"
@@ -11,6 +12,19 @@ import (
 
 func (c *Client) doRequest(method, path string, headers map[string]string, body []byte) (status int, respHeaders map[string][]string, respBody []byte, usedWS bool, err error) {
 	r := c.client.R()
+	// Reporting endpoints can be slower than config/list pulls; use a larger request timeout
+	// and retry budget to avoid transient panel latency causing cascading failures.
+	if strings.EqualFold(method, http.MethodPost) &&
+		(path == "/api/v1/server/UniProxy/push" || path == "/api/v1/server/UniProxy/alive") {
+		timeout := 45 * time.Second
+		if c.timeout > 0 && c.timeout > timeout {
+			timeout = c.timeout
+		}
+		r.SetTimeout(timeout)
+		r.SetRetryCount(5)
+	} else if c.timeout > 0 {
+		r.SetTimeout(c.timeout)
+	}
 	for k, v := range headers {
 		r.SetHeader(k, v)
 	}
@@ -28,6 +42,9 @@ func (c *Client) doRequest(method, path string, headers map[string]string, body 
 		return 0, nil, nil, false, fmt.Errorf("unsupported method: %s", method)
 	}
 	if err != nil {
+		if hc := c.client.GetClient(); hc != nil {
+			hc.CloseIdleConnections()
+		}
 		return 0, nil, nil, false, err
 	}
 	if resp == nil {
