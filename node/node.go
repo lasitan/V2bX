@@ -2,8 +2,6 @@ package node
 
 import (
 	"fmt"
-	"net/url"
-	"strings"
 	"sync"
 	"time"
 
@@ -51,45 +49,9 @@ func (n *Node) Start(nodes []conf.NodeConfig, core vCore.Core) error {
 		nodeType := nodes[i].ApiConfig.NodeType
 		nodeID := nodes[i].ApiConfig.NodeID
 
-		wsMode := "default"
-		wsEndpoint := ""
-		if nodes[i].ApiConfig.WSURL != "" {
-			wsMode = "ws_url"
-			if u, err := url.Parse(nodes[i].ApiConfig.WSURL); err == nil {
-				base := &url.URL{Scheme: u.Scheme, Host: u.Host, Path: u.Path}
-				wsEndpoint = base.String()
-			} else {
-				wsEndpoint = nodes[i].ApiConfig.WSURL
-			}
-		} else {
-			if nodes[i].ApiConfig.WSScheme != "" || nodes[i].ApiConfig.WSHost != "" || nodes[i].ApiConfig.WSPort > 0 {
-				wsMode = "ws_parts"
-			}
-			apiBase, err := url.Parse(apiHost)
-			if err == nil {
-				scheme := "ws"
-				if strings.EqualFold(apiBase.Scheme, "https") {
-					scheme = "wss"
-				}
-				if nodes[i].ApiConfig.WSScheme != "" {
-					scheme = nodes[i].ApiConfig.WSScheme
-				}
-				host := apiBase.Hostname()
-				if nodes[i].ApiConfig.WSHost != "" {
-					host = nodes[i].ApiConfig.WSHost
-				}
-				port := 51821
-				if nodes[i].ApiConfig.WSPort > 0 {
-					port = nodes[i].ApiConfig.WSPort
-				}
-				wsEndpoint = fmt.Sprintf("%s://%s:%d", scheme, host, port)
-			}
-		}
-
 		log.WithFields(log.Fields{
-			"api_host": apiHost,
-			"ws_mode":  wsMode,
-			"ws":       wsEndpoint,
+			"api_host":  apiHost,
+			"transport": "http",
 			"node_type": nodeType,
 			"node_id":   nodeID,
 		}).Info("面板端点")

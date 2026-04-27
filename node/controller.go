@@ -1,10 +1,8 @@
 package node
 
 import (
-	"encoding/json"
 	"errors"
 	"fmt"
-	"net/http"
 	"time"
 
 	"github.com/InazumaV/V2bX/api/panel"
@@ -14,16 +12,6 @@ import (
 	"github.com/InazumaV/V2bX/limiter"
 	log "github.com/sirupsen/logrus"
 )
-
-type wsTrafficQueryRequest struct {
-	Tag string `json:"tag,omitempty"`
-	UID int    `json:"uid,omitempty"`
-}
-
-type wsTrafficQueryResponse struct {
-	Tag     string             `json:"tag"`
-	Traffic []panel.UserTraffic `json:"traffic"`
-}
 
 type Controller struct {
 	server                    vCore.Core
@@ -42,45 +30,6 @@ type Controller struct {
 	onlineReportCh            chan struct{}
 	onlineReportStopCh        chan struct{}
 	*conf.Options
-}
-
-func (c *Controller) handleWSTrafficQuery(req panel.WSRequest) (resp panel.WSResponse) {
-	if req.Method != http.MethodGet && req.Method != http.MethodPost {
-		return panel.WSResponse{StatusCode: http.StatusMethodNotAllowed, Headers: map[string][]string{"Content-Type": {"text/plain"}}, Body: []byte("method not allowed")}
-	}
-	if req.Path != "/api/v1/server/UniProxy/traffic/query" {
-		return panel.WSResponse{StatusCode: http.StatusNotFound, Headers: map[string][]string{"Content-Type": {"text/plain"}}, Body: []byte("not found")}
-	}
-
-	q := wsTrafficQueryRequest{}
-	if len(req.Body) > 0 {
-		_ = json.Unmarshal(req.Body, &q)
-	}
-	if q.Tag != "" && q.Tag != c.tag {
-		return panel.WSResponse{StatusCode: http.StatusBadRequest, Headers: map[string][]string{"Content-Type": {"text/plain"}}, Body: []byte("tag mismatch")}
-	}
-
-	traffic, err := c.server.GetUserTrafficSlice(c.tag, false)
-	if err != nil {
-		return panel.WSResponse{StatusCode: http.StatusInternalServerError, Headers: map[string][]string{"Content-Type": {"text/plain"}}, Body: []byte(err.Error())}
-	}
-	if q.UID != 0 {
-		filtered := make([]panel.UserTraffic, 0, 1)
-		for _, t := range traffic {
-			if t.UID == q.UID {
-				filtered = append(filtered, t)
-				break
-			}
-		}
-		traffic = filtered
-	}
-
-	out := wsTrafficQueryResponse{Tag: c.tag, Traffic: traffic}
-	b, err := json.Marshal(out)
-	if err != nil {
-		return panel.WSResponse{StatusCode: http.StatusInternalServerError, Headers: map[string][]string{"Content-Type": {"text/plain"}}, Body: []byte(err.Error())}
-	}
-	return panel.WSResponse{StatusCode: http.StatusOK, Headers: map[string][]string{"Content-Type": {"application/json"}}, Body: b}
 }
 
 // NewController return a Node controller with default parameters.
@@ -137,7 +86,6 @@ func (c *Controller) Start() error {
 		return fmt.Errorf("更新规则失败: %s", err)
 	}
 	c.limiter = l
-	c.apiClient.SetWSHandler(c.handleWSTrafficQuery)
 	c.onlineReportCh = make(chan struct{}, 1)
 	c.onlineReportStopCh = make(chan struct{})
 	c.limiter.SetOnlineStateHook(func(evt limiter.OnlineStateEvent) {

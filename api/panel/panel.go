@@ -6,10 +6,8 @@ import (
 	"strconv"
 	"strings"
 	"sync"
-	"sync/atomic"
 	"time"
 
-	"github.com/gorilla/websocket"
 	"github.com/sirupsen/logrus"
 
 	"github.com/InazumaV/V2bX/conf"
@@ -21,10 +19,6 @@ import (
 type Client struct {
 	client           *resty.Client
 	APIHost          string
-	WSURL            string
-	WSScheme         string
-	WSHost           string
-	WSPort           int
 	Token            string
 	NodeType         string
 	NodeId           int
@@ -32,26 +26,11 @@ type Client struct {
 	httpTransportLogOnce sync.Once
 	timeout          time.Duration
 	queryParams      map[string]string
-	wsState          int32
-	wsLastFailUnixNs int64
-	wsConnMu         sync.Mutex
-	wsConn           *websocket.Conn
-	wsWriteMu        sync.Mutex
-	wsNextID         int64
-	wsPendingMu      sync.Mutex
-	wsPending        map[int64]chan wsPendingResult
-	wsHandlerMu      sync.RWMutex
-	wsHandler        func(req WSRequest) WSResponse
 	nodeEtag         string
 	userEtag         string
 	responseBodyHash string
 	UserList         *UserListBody
 	AliveMap         *AliveMap
-}
-
-type wsPendingResult struct {
-	resp *WSResponse
-	err  error
 }
 
 func New(c *conf.ApiConfig) (*Client, error) {
@@ -102,10 +81,6 @@ func New(c *conf.ApiConfig) (*Client, error) {
 		client:   client,
 		Token:    c.Key,
 		APIHost:  c.APIHost,
-		WSURL:    c.WSURL,
-		WSScheme: c.WSScheme,
-		WSHost:   c.WSHost,
-		WSPort:   c.WSPort,
 		NodeType: c.NodeType,
 		NodeId:   c.NodeID,
 		timeout:  timeout,
@@ -116,22 +91,7 @@ func New(c *conf.ApiConfig) (*Client, error) {
 			}
 			return m
 		}(),
-		wsState:  int32(wsStateUnknown),
-		wsPending: make(map[int64]chan wsPendingResult),
 		UserList: &UserListBody{},
 		AliveMap: &AliveMap{},
 	}, nil
-}
-
-func (c *Client) SetWSHandler(h func(req WSRequest) WSResponse) {
-	c.wsHandlerMu.Lock()
-	c.wsHandler = h
-	c.wsHandlerMu.Unlock()
-}
-
-func (c *Client) disableWS() {
-	atomic.StoreInt32(&c.wsState, int32(wsStateUnavailable))
-	c.wsConnMu.Lock()
-	c.closeWSConnLocked()
-	c.wsConnMu.Unlock()
 }
