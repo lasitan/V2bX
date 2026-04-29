@@ -156,7 +156,11 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 			}
 			if up+down > b.nodeReportMinTrafficBytes[tag] {
 				if b.users.uidMap[uuid] == 0 {
-					c.Delete(uuid)
+					if reset && (up != 0 || down != 0) {
+						// User map may be temporarily unavailable during snapshot refresh.
+						traffic.UpCounter.Add(up)
+						traffic.DownCounter.Add(down)
+					}
 					return true
 				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{

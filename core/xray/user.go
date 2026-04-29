@@ -77,7 +77,10 @@ func (x *Xray) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 			}
 			if up+down > x.nodeReportMinTrafficBytes[tag] {
 				if x.users.uidMap[email] == 0 {
-					c.Delete(email)
+					if reset && (up != 0 || down != 0) {
+						traffic.UpCounter.Add(up)
+						traffic.DownCounter.Add(down)
+					}
 					return true
 				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{

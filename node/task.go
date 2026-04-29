@@ -59,24 +59,26 @@ func (c *Controller) startTasks(node *panel.NodeInfo) {
 }
 
 func (c *Controller) applyUserSnapshot(newU []panel.UserInfo) error {
-	// Full replacement strategy:
-	// remove all old users on node first, then add the full latest list from panel.
 	oldUsers := c.userList
-	if len(oldUsers) > 0 {
-		if err := c.server.DelUsers(oldUsers, c.tag, c.info); err != nil {
+	deleted, added := compareUserList(oldUsers, newU)
+	if len(added) == 0 && len(deleted) == 0 {
+		// No-op: avoid rebuilding user map/counters and losing in-flight traffic stats.
+		return nil
+	}
+	if len(deleted) > 0 {
+		if err := c.server.DelUsers(deleted, c.tag, c.info); err != nil {
 			return err
 		}
 	}
-	if len(newU) > 0 {
+	if len(added) > 0 {
 		if _, err := c.server.AddUsers(&vCore.AddUsersParams{
 			Tag:      c.tag,
 			NodeInfo: c.info,
-			Users:    newU,
+			Users:    added,
 		}); err != nil {
 			return err
 		}
 	}
-	deleted, added := compareUserList(oldUsers, newU)
 	if len(added) > 0 || len(deleted) > 0 {
 		c.limiter.UpdateUser(c.tag, added, deleted)
 		if c.LimitConfig.EnableDynamicSpeedLimit {
@@ -255,7 +257,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		}
 		if c.userReportPeriodic.Interval != newN.PushInterval &&
 			newN.PushInterval != 0 {
-			c.userReportPeriodic.Interval = newN.PullInterval
+			c.userReportPeriodic.Interval = newN.PushInterval
 			c.userReportPeriodic.Close()
 			_ = c.userReportPeriodic.Start(false)
 		}
