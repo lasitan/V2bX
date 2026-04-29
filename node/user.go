@@ -8,6 +8,12 @@ import (
 	log "github.com/sirupsen/logrus"
 )
 
+const bytesPerMB = 1024 * 1024
+
+func bytesToMB(v int64) float64 {
+	return float64(v) / bytesPerMB
+}
+
 func (c *Controller) reportOnlineUsersNow() (err error) {
 	onlineDevice, err := c.limiter.GetCurrentOnlineDevice()
 	if err != nil {
@@ -58,6 +64,8 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		_ = c.runtimeTraffic.Add(runtimeUpload, runtimeDownload)
 	}
 	pendingTraffic := make([]panel.UserTraffic, 0)
+	var pendingUpload int64
+	var pendingDownload int64
 	if c.trafficCache != nil {
 		if cached, cacheErr := c.trafficCache.LoadPending(); cacheErr != nil {
 			log.WithFields(log.Fields{
@@ -66,6 +74,10 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			}).Warn("Load pending traffic cache failed")
 		} else {
 			pendingTraffic = cached
+			for _, t := range pendingTraffic {
+				pendingUpload += t.Upload
+				pendingDownload += t.Download
+			}
 		}
 	}
 	mergedTraffic := mergeUserTraffic(pendingTraffic, currentTraffic)
@@ -75,6 +87,18 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		mergedUpload += t.Upload
 		mergedDownload += t.Download
 	}
+	log.WithFields(log.Fields{
+		"tag":                c.tag,
+		"current_up_mb":      bytesToMB(runtimeUpload),
+		"current_down_mb":    bytesToMB(runtimeDownload),
+		"pending_up_mb":      bytesToMB(pendingUpload),
+		"pending_down_mb":    bytesToMB(pendingDownload),
+		"report_up_mb":       bytesToMB(mergedUpload),
+		"report_down_mb":     bytesToMB(mergedDownload),
+		"report_user_count":  len(mergedTraffic),
+		"traffic_unit":       "MB",
+		"traffic_report_run": true,
+	}).Info("Traffic report snapshot")
 	if len(mergedTraffic) > 0 {
 		err = c.apiClient.ReportUserTraffic(mergedTraffic)
 		if err != nil {
@@ -101,7 +125,19 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			if c.runtimeTraffic != nil {
 				_ = c.runtimeTraffic.AddReported(mergedUpload, mergedDownload)
 			}
+			log.WithFields(log.Fields{
+				"tag":            c.tag,
+				"reported_up_mb": bytesToMB(mergedUpload),
+				"reported_dn_mb": bytesToMB(mergedDownload),
+				"user_count":     len(mergedTraffic),
+				"traffic_unit":   "MB",
+			}).Info("Report user traffic success")
 		}
+	} else {
+		log.WithFields(log.Fields{
+			"tag":          c.tag,
+			"traffic_unit": "MB",
+		}).Info("Report user traffic skipped: no traffic to report")
 	}
 
 	_ = c.reportOnlineUsersNow()
