@@ -144,13 +144,17 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 		c.Counters.Range(func(key, value interface{}) bool {
 			uuid := key.(string)
 			traffic := value.(*counter.TrafficStorage)
-			up := traffic.UpCounter.Load()
-			down := traffic.DownCounter.Load()
+			var up int64
+			var down int64
+			if reset {
+				// Atomic drain to avoid losing increments between load and clear.
+				up = traffic.UpCounter.Swap(0)
+				down = traffic.DownCounter.Swap(0)
+			} else {
+				up = traffic.UpCounter.Load()
+				down = traffic.DownCounter.Load()
+			}
 			if up+down > b.nodeReportMinTrafficBytes[tag] {
-				if reset {
-					traffic.UpCounter.Store(0)
-					traffic.DownCounter.Store(0)
-				}
 				if b.users.uidMap[uuid] == 0 {
 					c.Delete(uuid)
 					return true
@@ -160,6 +164,10 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 					Upload:   up,
 					Download: down,
 				})
+			} else if reset && (up != 0 || down != 0) {
+				// Keep accumulating until it reaches report threshold.
+				traffic.UpCounter.Add(up)
+				traffic.DownCounter.Add(down)
 			}
 			return true
 		})
