@@ -7,6 +7,7 @@ import (
 	"github.com/InazumaV/V2bX/api/panel"
 	"github.com/InazumaV/V2bX/common/counter"
 	"github.com/InazumaV/V2bX/core"
+	log "github.com/sirupsen/logrus"
 	"github.com/sagernet/sing-box/option"
 	"github.com/sagernet/sing-box/protocol/anytls"
 	"github.com/sagernet/sing-box/protocol/hysteria"
@@ -137,6 +138,9 @@ func (b *Sing) GetUserTraffic(tag, uuid string, reset bool) (up int64, down int6
 
 func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic, error) {
 	trafficSlice := make([]panel.UserTraffic, 0)
+	var recoveredByHistory int64
+	var unresolvedUp int64
+	var unresolvedDown int64
 	hook := b.hookServer
 	b.users.mapLock.RLock()
 	defer b.users.mapLock.RUnlock()
@@ -155,12 +159,18 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 				up = traffic.UpCounter.Load()
 				down = traffic.DownCounter.Load()
 			}
-			if up+down >= b.nodeReportMinTrafficBytes[tag] {
+			if up != 0 || down != 0 {
 				uid := b.users.uidMap[uuid]
+				recoveredBy := false
 				if uid == 0 {
 					uid = b.users.uidHistory[uuid]
+					if uid != 0 {
+						recoveredBy = true
+					}
 				}
 				if uid == 0 {
+					unresolvedUp += up
+					unresolvedDown += down
 					if reset && (up != 0 || down != 0) {
 						// User map may be temporarily unavailable during snapshot refresh.
 						traffic.UpCounter.Add(up)
@@ -168,20 +178,35 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 					}
 					return true
 				}
+				if recoveredBy {
+					recoveredByHistory += up + down
+				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{
 					UID:      uid,
 					Upload:   up,
 					Download: down,
 				})
-			} else if reset && (up != 0 || down != 0) {
-				// Keep accumulating until it reaches report threshold.
-				traffic.UpCounter.Add(up)
-				traffic.DownCounter.Add(down)
 			}
 			return true
 		})
 		if len(trafficSlice) == 0 {
+			if reset && (recoveredByHistory > 0 || unresolvedUp > 0 || unresolvedDown > 0) {
+				log.WithFields(log.Fields{
+					"tag":                     tag,
+					"recovered_by_history_mb": float64(recoveredByHistory) / (1024 * 1024),
+					"unresolved_up_mb":        float64(unresolvedUp) / (1024 * 1024),
+					"unresolved_down_mb":      float64(unresolvedDown) / (1024 * 1024),
+				}).Warn("Sing traffic ownership diagnostics")
+			}
 			return nil, nil
+		}
+		if reset && (recoveredByHistory > 0 || unresolvedUp > 0 || unresolvedDown > 0) {
+			log.WithFields(log.Fields{
+				"tag":                     tag,
+				"recovered_by_history_mb": float64(recoveredByHistory) / (1024 * 1024),
+				"unresolved_up_mb":        float64(unresolvedUp) / (1024 * 1024),
+				"unresolved_down_mb":      float64(unresolvedDown) / (1024 * 1024),
+			}).Warn("Sing traffic ownership diagnostics")
 		}
 		return trafficSlice, nil
 	}
@@ -220,10 +245,7 @@ func (b *Sing) DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo
 	b.users.mapLock.Lock()
 	defer b.users.mapLock.Unlock()
 	for i := range users {
-		if v, ok := b.hookServer.counter.Load(tag); ok {
-			c := v.(*counter.TrafficCounter)
-			c.Delete(users[i].Uuid)
-		}
+		// Keep counter data for a while to avoid turning in-flight traffic into orphans.
 		delete(b.users.uidMap, users[i].Uuid)
 		uuids[i] = users[i].Uuid
 	}

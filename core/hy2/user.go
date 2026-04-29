@@ -8,6 +8,7 @@ import (
 	"github.com/InazumaV/V2bX/common/counter"
 	vCore "github.com/InazumaV/V2bX/core"
 	"github.com/apernet/hysteria/core/v2/server"
+	log "github.com/sirupsen/logrus"
 )
 
 var _ server.Authenticator = &V2bX{}
@@ -50,10 +51,7 @@ func (h *Hysteria2) DelUsers(users []panel.UserInfo, tag string, _ *panel.NodeIn
 	var wg sync.WaitGroup
 	for _, user := range users {
 		wg.Add(1)
-		if v, ok := h.Hy2nodes[tag].TrafficLogger.(*HookServer).Counter.Load(tag); ok {
-			c := v.(*counter.TrafficCounter)
-			c.Delete(user.Uuid)
-		}
+		// Keep counter data for in-flight sessions; map fallback will attribute later.
 		go func(u panel.UserInfo) {
 			defer wg.Done()
 			h.Auth.mutex.Lock()
@@ -67,6 +65,9 @@ func (h *Hysteria2) DelUsers(users []panel.UserInfo, tag string, _ *panel.NodeIn
 
 func (h *Hysteria2) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic, error) {
 	trafficSlice := make([]panel.UserTraffic, 0)
+	var recoveredByHistory int64
+	var unresolvedUp int64
+	var unresolvedDown int64
 	h.Auth.mutex.RLock()
 	defer h.Auth.mutex.RUnlock()
 	if _, ok := h.Hy2nodes[tag]; !ok {
@@ -87,31 +88,53 @@ func (h *Hysteria2) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTra
 				up = traffic.UpCounter.Load()
 				down = traffic.DownCounter.Load()
 			}
-			if up+down >= hook.ReportMinTrafficBytes {
+			if up != 0 || down != 0 {
 				uid := h.Auth.usersMap[uuid]
+				recoveredBy := false
 				if uid == 0 {
 					uid = h.Auth.usersHistory[uuid]
+					if uid != 0 {
+						recoveredBy = true
+					}
 				}
 				if uid == 0 {
+					unresolvedUp += up
+					unresolvedDown += down
 					if reset && (up != 0 || down != 0) {
 						traffic.UpCounter.Add(up)
 						traffic.DownCounter.Add(down)
 					}
 					return true
 				}
+				if recoveredBy {
+					recoveredByHistory += up + down
+				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{
 					UID:      uid,
 					Upload:   up,
 					Download: down,
 				})
-			} else if reset && (up != 0 || down != 0) {
-				traffic.UpCounter.Add(up)
-				traffic.DownCounter.Add(down)
 			}
 			return true
 		})
 		if len(trafficSlice) == 0 {
+			if reset && (recoveredByHistory > 0 || unresolvedUp > 0 || unresolvedDown > 0) {
+				log.WithFields(log.Fields{
+					"tag":                     tag,
+					"recovered_by_history_mb": float64(recoveredByHistory) / (1024 * 1024),
+					"unresolved_up_mb":        float64(unresolvedUp) / (1024 * 1024),
+					"unresolved_down_mb":      float64(unresolvedDown) / (1024 * 1024),
+				}).Warn("Hysteria2 traffic ownership diagnostics")
+			}
 			return nil, nil
+		}
+		if reset && (recoveredByHistory > 0 || unresolvedUp > 0 || unresolvedDown > 0) {
+			log.WithFields(log.Fields{
+				"tag":                     tag,
+				"recovered_by_history_mb": float64(recoveredByHistory) / (1024 * 1024),
+				"unresolved_up_mb":        float64(unresolvedUp) / (1024 * 1024),
+				"unresolved_down_mb":      float64(unresolvedDown) / (1024 * 1024),
+			}).Warn("Hysteria2 traffic ownership diagnostics")
 		}
 		return trafficSlice, nil
 	}
