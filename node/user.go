@@ -1,6 +1,8 @@
 package node
 
 import (
+	"fmt"
+	"sort"
 	"strconv"
 	"time"
 
@@ -12,6 +14,42 @@ const bytesPerMB = 1024 * 1024
 
 func bytesToMB(v int64) float64 {
 	return float64(v) / bytesPerMB
+}
+
+func buildTopUserTrafficFields(items []panel.UserTraffic) (string, string, string) {
+	if len(items) == 0 {
+		return "", "", ""
+	}
+	sorted := make([]panel.UserTraffic, 0, len(items))
+	for _, it := range items {
+		if it.UID <= 0 || (it.Upload == 0 && it.Download == 0) {
+			continue
+		}
+		sorted = append(sorted, it)
+	}
+	sort.Slice(sorted, func(i, j int) bool {
+		return sorted[i].Upload+sorted[i].Download > sorted[j].Upload+sorted[j].Download
+	})
+	formatOne := func(it panel.UserTraffic) string {
+		return fmt.Sprintf(
+			"uid=%d up=%.6fMB down=%.6fMB total=%.6fMB",
+			it.UID,
+			bytesToMB(it.Upload),
+			bytesToMB(it.Download),
+			bytesToMB(it.Upload+it.Download),
+		)
+	}
+	var top1, top2, top3 string
+	if len(sorted) > 0 {
+		top1 = formatOne(sorted[0])
+	}
+	if len(sorted) > 1 {
+		top2 = formatOne(sorted[1])
+	}
+	if len(sorted) > 2 {
+		top3 = formatOne(sorted[2])
+	}
+	return top1, top2, top3
 }
 
 func (c *Controller) reportOnlineUsersNow() (err error) {
@@ -89,6 +127,7 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		mergedUpload += t.Upload
 		mergedDownload += t.Download
 	}
+	topUser1, topUser2, topUser3 := buildTopUserTrafficFields(mergedTraffic)
 	log.WithFields(log.Fields{
 		"tag":                c.tag,
 		"current_up_mb":      bytesToMB(runtimeUpload),
@@ -98,6 +137,10 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		"report_up_mb":       bytesToMB(mergedUpload),
 		"report_down_mb":     bytesToMB(mergedDownload),
 		"report_user_count":  len(mergedTraffic),
+		"top_user_1":         topUser1,
+		"top_user_2":         topUser2,
+		"top_user_3":         topUser3,
+		"ownership_diag_tip": "see *traffic ownership diagnostics* logs for unresolved/recovered details",
 		"traffic_unit":       "MB",
 		"traffic_report_run": true,
 	}).Info("Traffic report snapshot")
