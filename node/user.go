@@ -48,6 +48,15 @@ func (c *Controller) reportOnlineUsersNow() (err error) {
 
 func (c *Controller) reportUserTrafficTask() (err error) {
 	currentTraffic, _ := c.server.GetUserTrafficSlice(c.tag, true)
+	var runtimeUpload int64
+	var runtimeDownload int64
+	for _, t := range currentTraffic {
+		runtimeUpload += t.Upload
+		runtimeDownload += t.Download
+	}
+	if c.runtimeTraffic != nil {
+		_ = c.runtimeTraffic.Add(runtimeUpload, runtimeDownload)
+	}
 	pendingTraffic := make([]panel.UserTraffic, 0)
 	if c.trafficCache != nil {
 		if cached, cacheErr := c.trafficCache.LoadPending(); cacheErr != nil {
@@ -60,6 +69,12 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		}
 	}
 	mergedTraffic := mergeUserTraffic(pendingTraffic, currentTraffic)
+	var mergedUpload int64
+	var mergedDownload int64
+	for _, t := range mergedTraffic {
+		mergedUpload += t.Upload
+		mergedDownload += t.Download
+	}
 	if len(mergedTraffic) > 0 {
 		err = c.apiClient.ReportUserTraffic(mergedTraffic)
 		if err != nil {
@@ -83,6 +98,9 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		} else if c.trafficCache != nil {
 			c.trafficReportFailCount = 0
 			_ = c.trafficCache.ClearReported()
+			if c.runtimeTraffic != nil {
+				_ = c.runtimeTraffic.AddReported(mergedUpload, mergedDownload)
+			}
 		}
 	}
 

@@ -1,7 +1,11 @@
 package cmd
 
 import (
+	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/InazumaV/V2bX/common/exec"
@@ -31,6 +35,11 @@ var (
 			exec.RunCommandStd("journalctl", "-u", "V2bX.service", "-e", "--no-pager", "-f")
 		},
 	}
+	checkCommand = cobra.Command{
+		Use:   "check",
+		Short: "Check runtime upstream/downstream traffic",
+		Run:   checkHandle,
+	}
 )
 
 func init() {
@@ -38,6 +47,7 @@ func init() {
 	command.AddCommand(&stopCommand)
 	command.AddCommand(&restartCommand)
 	command.AddCommand(&logCommand)
+	command.AddCommand(&checkCommand)
 }
 
 func startHandle(_ *cobra.Command, _ []string) {
@@ -108,4 +118,86 @@ func restartHandle(_ *cobra.Command, _ []string) {
 		return
 	}
 	fmt.Println(Ok("V2bX重启成功"))
+}
+
+type runtimeTrafficView struct {
+	StartedAt int64 `json:"started_at"`
+	UpdatedAt int64 `json:"updated_at"`
+	Upload    int64 `json:"upload"`
+	Download  int64 `json:"download"`
+	ReportedUpload   int64 `json:"reported_upload"`
+	ReportedDownload int64 `json:"reported_download"`
+}
+
+type pendingTrafficPayload struct {
+	Items []struct {
+		Upload   int64 `json:"upload"`
+		Download int64 `json:"download"`
+	} `json:"items"`
+}
+
+func checkHandle(_ *cobra.Command, _ []string) {
+	pattern := filepath.Join("/etc/V2bX", "cache", "runtime_traffic_*.json")
+	files, err := filepath.Glob(pattern)
+	if err != nil || len(files) == 0 {
+		fmt.Println(Err("未找到运行期流量统计文件"))
+		return
+	}
+
+	var totalUp int64
+	var totalDown int64
+	var totalReportedUp int64
+	var totalReportedDown int64
+	var totalPendingUp int64
+	var totalPendingDown int64
+	for _, path := range files {
+		raw, readErr := os.ReadFile(path)
+		if readErr != nil || len(raw) == 0 {
+			continue
+		}
+		view := runtimeTrafficView{}
+		if unmarshalErr := json.Unmarshal(raw, &view); unmarshalErr != nil {
+			continue
+		}
+		pendingUp, pendingDown := readPendingTraffic(path)
+		totalUp += view.Upload
+		totalDown += view.Download
+		totalReportedUp += view.ReportedUpload
+		totalReportedDown += view.ReportedDownload
+		totalPendingUp += pendingUp
+		totalPendingDown += pendingDown
+		fmt.Printf("%s\n", strings.TrimSuffix(filepath.Base(path), ".json"))
+		fmt.Printf("  started_at: %s\n", time.Unix(view.StartedAt, 0).Format("2006-01-02 15:04:05"))
+		fmt.Printf("  updated_at: %s\n", time.Unix(view.UpdatedAt, 0).Format("2006-01-02 15:04:05"))
+		fmt.Printf("  本次累计: up=%d bytes, down=%d bytes\n", view.Upload, view.Download)
+		fmt.Printf("  已上报:   up=%d bytes, down=%d bytes\n", view.ReportedUpload, view.ReportedDownload)
+		fmt.Printf("  待上报缓存: up=%d bytes, down=%d bytes\n", pendingUp, pendingDown)
+	}
+
+	fmt.Println("--------------------------------------------------")
+	fmt.Printf("本次累计总计: up=%d bytes, down=%d bytes\n", totalUp, totalDown)
+	fmt.Printf("已上报总计:   up=%d bytes, down=%d bytes\n", totalReportedUp, totalReportedDown)
+	fmt.Printf("待上报缓存总计: up=%d bytes, down=%d bytes\n", totalPendingUp, totalPendingDown)
+}
+
+func readPendingTraffic(runtimePath string) (int64, int64) {
+	base := filepath.Base(runtimePath)
+	base = strings.TrimPrefix(base, "runtime_traffic_")
+	base = strings.TrimSuffix(base, ".json")
+	trafficPath := filepath.Join("/etc/V2bX", "cache", "traffic_"+base+".db")
+	raw, err := os.ReadFile(trafficPath)
+	if err != nil || len(raw) == 0 {
+		return 0, 0
+	}
+	payload := pendingTrafficPayload{}
+	if err = json.Unmarshal(raw, &payload); err != nil {
+		return 0, 0
+	}
+	var up int64
+	var down int64
+	for _, it := range payload.Items {
+		up += it.Upload
+		down += it.Download
+	}
+	return up, down
 }

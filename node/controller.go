@@ -19,6 +19,7 @@ type Controller struct {
 	apiClient                 *panel.Client
 	userCache                 *userCacheStore
 	trafficCache              *trafficCacheStore
+	runtimeTraffic            *runtimeTrafficStore
 	tag                       string
 	limiter                   *limiter.Limiter
 	traffic                   map[string]int64
@@ -66,6 +67,10 @@ func (c *Controller) Start() error {
 
 	c.userCache = newUserCacheStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
 	c.trafficCache = newTrafficCacheStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
+	c.runtimeTraffic = newRuntimeTrafficStore(c.apiClient.APIHost, c.apiClient.NodeType, c.apiClient.NodeId)
+	if c.runtimeTraffic != nil {
+		_ = c.runtimeTraffic.ResetSession()
+	}
 	cachedUsers, cacheErr := c.userCache.Load()
 	if cacheErr != nil {
 		log.WithFields(log.Fields{
