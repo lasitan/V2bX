@@ -439,6 +439,15 @@ show_V2bX_version() {
     fi
 }
 
+check_runtime_traffic() {
+    echo -e "${green}检查本次运行流量（已上报/待上报缓存/本次累计）：${plain}"
+    /usr/local/V2bX/V2bX check
+    echo ""
+    if [[ $# == 0 ]]; then
+        before_show_menu
+    fi
+}
+
 add_node_config() {
     echo -e "${green}请选择节点核心类型：${plain}"
     echo -e "${green}1. xray${plain}"
@@ -964,6 +973,7 @@ show_usage() {
     echo "V2bX enable       - 设置 V2bX 开机自启"
     echo "V2bX disable      - 取消 V2bX 开机自启"
     echo "V2bX log          - 查看 V2bX 日志"
+    echo "V2bX check        - 检查本次运行流量统计"
     echo "V2bX x25519       - 生成 x25519 密钥"
     echo "V2bX generate     - 生成 V2bX 配置文件"
     echo "V2bX update       - 更新 V2bX"
@@ -999,11 +1009,12 @@ show_menu() {
   ${green}14.${plain} 升级 V2bX 维护脚本
   ${green}15.${plain} 生成 V2bX 配置文件
   ${green}16.${plain} 放行 VPS 的所有网络端口
-  ${green}17.${plain} 退出脚本
+  ${green}17.${plain} 检查本次运行流量统计
+  ${green}18.${plain} 退出脚本
  "
  #后续更新可加入上方字符串中
     show_status
-    echo && read -rp "请输入选择 [0-17]: " num
+    echo && read -rp "请输入选择 [0-18]: " num
 
     case "${num}" in
         0) config ;;
@@ -1023,8 +1034,9 @@ show_menu() {
         14) update_shell ;;
         15) generate_config_file ;;
         16) open_ports ;;
-        17) exit ;;
-        *) echo -e "${red}请输入正确的数字 [0-16]${plain}" ;;
+        17) check_install && check_runtime_traffic ;;
+        18) exit ;;
+        *) echo -e "${red}请输入正确的数字 [0-18]${plain}" ;;
     esac
 }
 
@@ -1037,6 +1049,7 @@ if [[ $# > 0 ]]; then
         "enable") check_install 0 && enable 0 ;;
         "disable") check_install 0 && disable 0 ;;
         "log") check_install 0 && show_log 0 ;;
+        "check") check_install 0 && check_runtime_traffic 0 ;;
         "update") check_install 0 && update 0 $2 ;;
         "config") config $* ;;
         "generate") generate_config_file ;;
