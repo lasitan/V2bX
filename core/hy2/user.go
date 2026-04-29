@@ -13,14 +13,18 @@ import (
 var _ server.Authenticator = &V2bX{}
 
 type V2bX struct {
-	usersMap map[string]int
-	mutex    sync.RWMutex
+	usersMap     map[string]int
+	usersHistory map[string]int
+	mutex        sync.RWMutex
 }
 
 func (v *V2bX) Authenticate(addr net.Addr, auth string, tx uint64) (ok bool, id string) {
 	v.mutex.RLock()
 	defer v.mutex.RUnlock()
 	if _, exists := v.usersMap[auth]; exists {
+		return true, auth
+	}
+	if _, exists := v.usersHistory[auth]; exists {
 		return true, auth
 	}
 	return false, ""
@@ -34,6 +38,7 @@ func (h *Hysteria2) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
 			defer wg.Done()
 			h.Auth.mutex.Lock()
 			h.Auth.usersMap[u.Uuid] = u.Id
+			h.Auth.usersHistory[u.Uuid] = u.Id
 			h.Auth.mutex.Unlock()
 		}(user)
 	}
@@ -82,8 +87,12 @@ func (h *Hysteria2) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTra
 				up = traffic.UpCounter.Load()
 				down = traffic.DownCounter.Load()
 			}
-			if up+down > hook.ReportMinTrafficBytes {
-				if h.Auth.usersMap[uuid] == 0 {
+			if up+down >= hook.ReportMinTrafficBytes {
+				uid := h.Auth.usersMap[uuid]
+				if uid == 0 {
+					uid = h.Auth.usersHistory[uuid]
+				}
+				if uid == 0 {
 					if reset && (up != 0 || down != 0) {
 						traffic.UpCounter.Add(up)
 						traffic.DownCounter.Add(down)
@@ -91,7 +100,7 @@ func (h *Hysteria2) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTra
 					return true
 				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{
-					UID:      h.Auth.usersMap[uuid],
+					UID:      uid,
 					Upload:   up,
 					Download: down,
 				})

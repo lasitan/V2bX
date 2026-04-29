@@ -30,7 +30,8 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 	return &Hysteria2{
 		Hy2nodes: make(map[string]Hysteria2node),
 		Auth: &V2bX{
-			usersMap: make(map[string]int),
+			usersMap:     make(map[string]int),
+			usersHistory: make(map[string]int),
 		},
 		Logger: log,
 	}, nil

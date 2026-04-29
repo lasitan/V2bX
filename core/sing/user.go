@@ -27,6 +27,7 @@ func (b *Sing) AddUsers(p *core.AddUsersParams) (added int, err error) {
 	defer b.users.mapLock.Unlock()
 	for i := range p.Users {
 		b.users.uidMap[p.Users[i].Uuid] = p.Users[i].Id
+		b.users.uidHistory[p.Users[i].Uuid] = p.Users[i].Id
 	}
 	switch p.NodeInfo.Type {
 	case "vless":
@@ -154,8 +155,12 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 				up = traffic.UpCounter.Load()
 				down = traffic.DownCounter.Load()
 			}
-			if up+down > b.nodeReportMinTrafficBytes[tag] {
-				if b.users.uidMap[uuid] == 0 {
+			if up+down >= b.nodeReportMinTrafficBytes[tag] {
+				uid := b.users.uidMap[uuid]
+				if uid == 0 {
+					uid = b.users.uidHistory[uuid]
+				}
+				if uid == 0 {
 					if reset && (up != 0 || down != 0) {
 						// User map may be temporarily unavailable during snapshot refresh.
 						traffic.UpCounter.Add(up)
@@ -164,7 +169,7 @@ func (b *Sing) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 					return true
 				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{
-					UID:      b.users.uidMap[uuid],
+					UID:      uid,
 					Upload:   up,
 					Download: down,
 				})

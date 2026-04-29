@@ -43,15 +43,17 @@ type Xray struct {
 }
 
 type UserMap struct {
-	uidMap  map[string]int
-	mapLock sync.RWMutex
+	uidMap     map[string]int
+	uidHistory map[string]int
+	mapLock    sync.RWMutex
 }
 
 func New(c *conf.CoreConfig) (vCore.Core, error) {
 	return &Xray{
 		Server: getCore(c.XrayConfig),
 		users: &UserMap{
-			uidMap: make(map[string]int),
+			uidMap:     make(map[string]int),
+			uidHistory: make(map[string]int),
 		},
 		nodeReportMinTrafficBytes: make(map[string]int64),
 	}, nil

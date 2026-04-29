@@ -61,7 +61,9 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		runtimeDownload += t.Download
 	}
 	if c.runtimeTraffic != nil {
-		_ = c.runtimeTraffic.Add(runtimeUpload, runtimeDownload)
+		if rtErr := c.runtimeTraffic.Add(runtimeUpload, runtimeDownload); rtErr != nil {
+			log.WithFields(log.Fields{"tag": c.tag, "err": rtErr}).Warn("Runtime traffic cache add failed")
+		}
 	}
 	pendingTraffic := make([]panel.UserTraffic, 0)
 	var pendingUpload int64
@@ -104,7 +106,9 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 		if err != nil {
 			c.trafficReportFailCount++
 			if c.trafficCache != nil {
-				_ = c.trafficCache.SavePending(mergedTraffic)
+				if saveErr := c.trafficCache.SavePending(mergedTraffic); saveErr != nil {
+					log.WithFields(log.Fields{"tag": c.tag, "err": saveErr}).Warn("Save pending traffic failed")
+				}
 			}
 			log.WithFields(log.Fields{
 				"tag":      c.tag,
@@ -121,9 +125,13 @@ func (c *Controller) reportUserTrafficTask() (err error) {
 			}
 		} else if c.trafficCache != nil {
 			c.trafficReportFailCount = 0
-			_ = c.trafficCache.ClearReported()
+			if clearErr := c.trafficCache.ClearReported(); clearErr != nil {
+				log.WithFields(log.Fields{"tag": c.tag, "err": clearErr}).Warn("Clear pending traffic failed")
+			}
 			if c.runtimeTraffic != nil {
-				_ = c.runtimeTraffic.AddReported(mergedUpload, mergedDownload)
+				if rtErr := c.runtimeTraffic.AddReported(mergedUpload, mergedDownload); rtErr != nil {
+					log.WithFields(log.Fields{"tag": c.tag, "err": rtErr}).Warn("Runtime traffic reported add failed")
+				}
 			}
 			log.WithFields(log.Fields{
 				"tag":            c.tag,

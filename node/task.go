@@ -66,6 +66,7 @@ func (c *Controller) applyUserSnapshot(newU []panel.UserInfo) error {
 		return nil
 	}
 	if len(deleted) > 0 {
+		c.flushCurrentTrafficToCache("before_user_snapshot_delete")
 		if err := c.server.DelUsers(deleted, c.tag, c.info); err != nil {
 			return err
 		}
@@ -173,6 +174,7 @@ func (c *Controller) nodeInfoMonitor() (err error) {
 		c.aliveListFailCount = 0
 	}
 	if newN != nil {
+		c.flushCurrentTrafficToCache("before_node_reload")
 		c.info = newN
 		// nodeInfo changed
 		if newU != nil {

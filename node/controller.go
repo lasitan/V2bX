@@ -244,6 +244,7 @@ func (c *Controller) expireOnlineTask() error {
 
 // Close implement the Close() function of the service interface
 func (c *Controller) Close() error {
+	c.flushCurrentTrafficToCache("controller_close")
 	if c.tag != "" {
 		limiter.DeleteLimiter(c.tag)
 	}
@@ -276,4 +277,44 @@ func (c *Controller) Close() error {
 
 func (c *Controller) buildNodeTag(node *panel.NodeInfo) string {
 	return fmt.Sprintf("[%s]-%s:%d", c.apiClient.APIHost, node.Type, node.Id)
+}
+
+func (c *Controller) flushCurrentTrafficToCache(reason string) {
+	if c.tag == "" {
+		return
+	}
+	currentTraffic, err := c.server.GetUserTrafficSlice(c.tag, true)
+	if err != nil || len(currentTraffic) == 0 {
+		return
+	}
+	var up int64
+	var down int64
+	for _, t := range currentTraffic {
+		up += t.Upload
+		down += t.Download
+	}
+	if c.runtimeTraffic != nil {
+		if rtErr := c.runtimeTraffic.Add(up, down); rtErr != nil {
+			log.WithFields(log.Fields{"tag": c.tag, "err": rtErr}).Warn("runtime traffic add failed during flush")
+		}
+	}
+	if c.trafficCache == nil {
+		return
+	}
+	pending, loadErr := c.trafficCache.LoadPending()
+	if loadErr != nil {
+		log.WithFields(log.Fields{"tag": c.tag, "err": loadErr, "reason": reason}).Warn("load pending traffic failed during flush")
+		return
+	}
+	merged := mergeUserTraffic(pending, currentTraffic)
+	if saveErr := c.trafficCache.SavePending(merged); saveErr != nil {
+		log.WithFields(log.Fields{"tag": c.tag, "err": saveErr, "reason": reason}).Warn("save pending traffic failed during flush")
+		return
+	}
+	log.WithFields(log.Fields{
+		"tag":       c.tag,
+		"reason":    reason,
+		"flush_up":  up,
+		"flush_down": down,
+	}).Info("flushed current traffic to pending cache")
 }

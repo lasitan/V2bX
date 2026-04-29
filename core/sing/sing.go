@@ -37,8 +37,9 @@ type Sing struct {
 }
 
 type UserMap struct {
-	uidMap  map[string]int
-	mapLock sync.RWMutex
+	uidMap     map[string]int
+	uidHistory map[string]int
+	mapLock    sync.RWMutex
 }
 
 func init() {
@@ -92,7 +93,8 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		router:     b.Router(),
 		logFactory: b.LogFactory(),
 		users: &UserMap{
-			uidMap: make(map[string]int),
+			uidMap:     make(map[string]int),
+			uidHistory: make(map[string]int),
 		},
 		nodeReportMinTrafficBytes: make(map[string]int64),
 		wsMux:                     newWsMuxManager(),

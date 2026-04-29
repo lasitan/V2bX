@@ -75,8 +75,12 @@ func (x *Xray) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 				up = traffic.UpCounter.Load()
 				down = traffic.DownCounter.Load()
 			}
-			if up+down > x.nodeReportMinTrafficBytes[tag] {
-				if x.users.uidMap[email] == 0 {
+			if up+down >= x.nodeReportMinTrafficBytes[tag] {
+				uid := x.users.uidMap[email]
+				if uid == 0 {
+					uid = x.users.uidHistory[email]
+				}
+				if uid == 0 {
 					if reset && (up != 0 || down != 0) {
 						traffic.UpCounter.Add(up)
 						traffic.DownCounter.Add(down)
@@ -84,7 +88,7 @@ func (x *Xray) GetUserTrafficSlice(tag string, reset bool) ([]panel.UserTraffic,
 					return true
 				}
 				trafficSlice = append(trafficSlice, panel.UserTraffic{
-					UID:      x.users.uidMap[email],
+					UID:      uid,
 					Upload:   up,
 					Download: down,
 				})
@@ -106,7 +110,9 @@ func (c *Xray) AddUsers(p *vCore.AddUsersParams) (added int, err error) {
 	c.users.mapLock.Lock()
 	defer c.users.mapLock.Unlock()
 	for i := range p.Users {
-		c.users.uidMap[format.UserTag(p.Tag, p.Users[i].Uuid)] = p.Users[i].Id
+		userTag := format.UserTag(p.Tag, p.Users[i].Uuid)
+		c.users.uidMap[userTag] = p.Users[i].Id
+		c.users.uidHistory[userTag] = p.Users[i].Id
 	}
 	var users []*protocol.User
 	switch p.NodeInfo.Type {
