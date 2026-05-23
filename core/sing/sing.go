@@ -55,6 +55,7 @@ func New(c *conf.CoreConfig) (vCore.Core, error) {
 		if err != nil {
 			return nil, fmt.Errorf("read original config error: %s", err)
 		}
+		data = withNormalizedSingOriginDNS(data)
 		options, err = json.UnmarshalExtendedContext[option.Options](ctx, data)
 		if err != nil {
 			return nil, fmt.Errorf("unmarshal original config error: %s", err)
