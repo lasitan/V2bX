@@ -50,13 +50,7 @@ func clearDNSReverseMapping(dnsRouter adapter.DNSRouter) {
 	if !ok {
 		return
 	}
-	field := reflect.ValueOf(router).Elem().FieldByName("dnsReverseMapping")
-	if !field.IsValid() || field.IsNil() {
-		return
-	}
-	if purger, ok := field.Interface().(cachePurger); ok {
-		purger.Purge()
-	}
+	purgeUnexportedCacheField(reflect.ValueOf(router).Elem(), "dnsReverseMapping")
 }
 
 // clearPersistentDNSCache removes only DNS-related buckets in cache.db (FakeIP, RDRC).
