@@ -27,12 +27,18 @@ jobs:
       no_proxy: ""
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
-          submodules: false
-          path: src
+        env:
+          REPO_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf src
+          git init src
+          cd src
+          git remote add origin "https://x-access-token:${REPO_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch --depth 1 origin "${{ github.sha }}"
+          git checkout FETCH_HEAD
+          git remote set-url origin "https://github.com/${{ github.repository }}.git"
 
       - name: Read version
         id: version
@@ -56,12 +62,18 @@ jobs:
     needs: prepare
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
-          submodules: false
-          path: src
+        env:
+          REPO_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf src
+          git init src
+          cd src
+          git remote add origin "https://x-access-token:${REPO_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch --depth 1 origin "${{ github.sha }}"
+          git checkout FETCH_HEAD
+          git remote set-url origin "https://github.com/${{ github.repository }}.git"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -87,12 +99,18 @@ jobs:
     needs: prepare
     steps:
       - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          clean: false
-          fetch-depth: 1
-          submodules: false
-          path: src
+        env:
+          REPO_TOKEN: ${{ secrets.GH_PAT || github.token }}
+        shell: bash
+        run: |
+          set -euo pipefail
+          rm -rf src
+          git init src
+          cd src
+          git remote add origin "https://x-access-token:${REPO_TOKEN}@github.com/${{ github.repository }}.git"
+          git fetch --depth 1 origin "${{ github.sha }}"
+          git checkout FETCH_HEAD
+          git remote set-url origin "https://github.com/${{ github.repository }}.git"
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
