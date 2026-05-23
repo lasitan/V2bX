@@ -41,9 +41,10 @@ var (
 		Run:   checkHandle,
 	}
 	dnsFlushCommand = cobra.Command{
-		Use:   "dns-flush",
-		Short: "Flush sing-box DNS cache without restart",
-		Run:   dnsFlushHandle,
+		Use:     "dns-flush",
+		Aliases: []string{"dnsflush"},
+		Short:   "Flush sing-box DNS cache without restart",
+		Run:     dnsFlushHandle,
 	}
 )
 
