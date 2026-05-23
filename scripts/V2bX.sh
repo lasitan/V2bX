@@ -450,7 +450,7 @@ check_runtime_traffic() {
 
 dnsflush() {
     echo -e "${green}刷新 sing-box DNS 缓存（不停运）：${plain}"
-    /usr/local/V2bX/V2bX dns-flush
+    /usr/local/V2bX/V2bX dnsflush 2>/dev/null || /usr/local/V2bX/V2bX dns-flush
     echo ""
     if [[ $# == 0 ]]; then
         before_show_menu
@@ -1060,7 +1060,12 @@ if [[ $# > 0 ]]; then
         "disable") check_install 0 && disable 0 ;;
         "log") check_install 0 && show_log 0 ;;
         "check") check_install 0 && check_runtime_traffic 0 ;;
-        "dnsflush"|"dns-flush") check_install 0 && dnsflush 0 ;;
+        "dnsflush"|"dns-flush")
+            check_install 0
+            echo -e "${green}刷新 sing-box DNS 缓存（不停运）：${plain}"
+            /usr/local/V2bX/V2bX dnsflush 2>/dev/null || /usr/local/V2bX/V2bX dns-flush
+            echo ""
+            ;;
         "update") check_install 0 && update 0 $2 ;;
         "config") config $* ;;
         "generate") generate_config_file ;;
