@@ -43,7 +43,7 @@ var (
 	dnsFlushCommand = cobra.Command{
 		Use:     "dns-flush",
 		Aliases: []string{"dnsflush"},
-		Short:   "Flush sing-box DNS cache without restart",
+		Short:   "Restart proxy core only (refresh DNS, keep panel tasks)",
 		Run:     dnsFlushHandle,
 	}
 )
@@ -150,31 +150,31 @@ func dnsFlushHandle(_ *cobra.Command, _ []string) {
 		return
 	}
 	if !r {
-		fmt.Println(Err("V2bX 未运行，无法刷新 DNS 缓存"))
+		fmt.Println(Err("V2bX 未运行，无法重启代理核心"))
 		return
 	}
 
 	since := time.Now()
 	if err = sendDNSFlushSignal(); err != nil {
-		fmt.Println(Err("发送刷新信号失败: ", err))
+		fmt.Println(Err("发送核心重启信号失败: ", err))
 		return
 	}
 
 	result, ok := waitDNSFlushResult(dnsFlushResultPath, since, 3*time.Second)
 	if !ok {
-		fmt.Println(Warn("已发送刷新信号，但未收到结果，请使用 V2bX log 查看是否成功"))
+		fmt.Println(Warn("已发送重启信号，但未收到结果，请使用 V2bX log 查看是否成功"))
 		return
 	}
 	if result.OK {
-		fmt.Println(Ok("DNS 解析缓存已强制清空（30 秒内新连接强制重新解析，服务未重启）"))
-		fmt.Println(Warn("提示：新连接将重新解析；已建立的长连接仍使用旧 IP，需客户端断开后重连"))
+		fmt.Println(Ok("代理核心已单独重启（面板轮询与限流未停，DNS 缓存已重建）"))
+		fmt.Println(Warn("提示：进行中的代理连接会中断，请客户端重新连接；约数秒内完成"))
 		return
 	}
 	if result.Message != "" {
-		fmt.Println(Err("DNS 缓存刷新失败: ", result.Message))
+		fmt.Println(Err("代理核心重启失败: ", result.Message))
 		return
 	}
-	fmt.Println(Err("DNS 缓存刷新失败"))
+	fmt.Println(Err("代理核心重启失败"))
 }
 
 func checkHandle(_ *cobra.Command, _ []string) {

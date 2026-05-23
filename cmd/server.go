@@ -122,12 +122,12 @@ func serverHandle(_ *cobra.Command, _ []string) {
 	for {
 		sig := <-osSignals
 		if sig == syscall.SIGUSR1 {
-			err := vc.FlushDNSCache()
+			err := restartCoreOnly(c, &vc, nodes)
 			writeDNSFlushResult(dnsFlushResultPath, err)
 			if err != nil {
-				log.WithField("err", err).Warn("Flush DNS cache failed")
+				log.WithField("err", err).Warn("Core-only restart failed")
 			} else {
-				log.Info("DNS cache flushed (runtime, no restart)")
+				log.Info("Core restarted (nodes and panel tasks kept running)")
 			}
 			continue
 		}

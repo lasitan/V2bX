@@ -15,6 +15,7 @@ type Node struct {
 	controllers []*Controller
 	closeCh     chan struct{}
 	wg          sync.WaitGroup
+	coreMu      sync.Mutex
 }
 
 func New() *Node {
@@ -102,4 +103,36 @@ func (n *Node) Close() {
 		}
 	}
 	n.controllers = nil
+}
+
+// WithCoreRestart detaches nodes from the old core, runs fn to rebuild core, then reattaches nodes.
+// Panel polling, limiters and traffic caches keep running; only the proxy core is recreated.
+func (n *Node) WithCoreRestart(fn func() (vCore.Core, error)) (vCore.Core, error) {
+	n.coreMu.Lock()
+	defer n.coreMu.Unlock()
+
+	for _, c := range n.controllers {
+		if c == nil {
+			continue
+		}
+		if err := c.detachFromCore(); err != nil {
+			return nil, err
+		}
+	}
+
+	newCore, err := fn()
+	if err != nil {
+		return nil, err
+	}
+
+	for _, c := range n.controllers {
+		if c == nil {
+			continue
+		}
+		if err := c.attachToCore(newCore); err != nil {
+			_ = newCore.Close()
+			return nil, err
+		}
+	}
+	return newCore, nil
 }

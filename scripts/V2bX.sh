@@ -449,7 +449,7 @@ check_runtime_traffic() {
 }
 
 dnsflush() {
-    echo -e "${green}刷新 sing-box DNS 缓存（不停运）：${plain}"
+    echo -e "${green}单独重启代理核心（刷新 DNS，面板轮询不停）：${plain}"
     /usr/local/V2bX/V2bX dnsflush 2>/dev/null || /usr/local/V2bX/V2bX dns-flush
     echo ""
     if [[ $# == 0 ]]; then
@@ -983,7 +983,7 @@ show_usage() {
     echo "V2bX disable      - 取消 V2bX 开机自启"
     echo "V2bX log          - 查看 V2bX 日志"
     echo "V2bX check        - 检查本次运行流量统计"
-    echo "V2bX dnsflush     - 刷新 sing-box DNS 缓存"
+    echo "V2bX dnsflush     - 单独重启代理核心"
     echo "V2bX x25519       - 生成 x25519 密钥"
     echo "V2bX generate     - 生成 V2bX 配置文件"
     echo "V2bX update       - 更新 V2bX"
