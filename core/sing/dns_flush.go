@@ -19,6 +19,8 @@ type cachePurger interface {
 	Purge()
 }
 
+// FlushDNSCache clears DNS resolution caches at runtime without restarting the core,
+// closing DNS transports, or dropping existing user connections.
 func (b *Sing) FlushDNSCache() error {
 	if b.box == nil || b.ctx == nil {
 		return errors.New("sing-box is not started")
@@ -27,8 +29,6 @@ func (b *Sing) FlushDNSCache() error {
 	if dnsRouter == nil {
 		return errors.New("dns router is not available")
 	}
-	dnsRouter.ClearCache()
-	clearDNSReverseMapping(dnsRouter)
 
 	var errs []error
 	if err := b.resetFakeIPStores(); err != nil {
@@ -37,6 +37,11 @@ func (b *Sing) FlushDNSCache() error {
 	if err := b.clearPersistentDNSCache(); err != nil {
 		errs = append(errs, err)
 	}
+
+	dnsRouter.ClearCache()
+	clearDNSReverseMapping(dnsRouter)
+	resetRuntimeDNSClient(dnsRouter)
+
 	return errors.Join(errs...)
 }
 

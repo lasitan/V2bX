@@ -127,7 +127,7 @@ func serverHandle(_ *cobra.Command, _ []string) {
 			if err != nil {
 				log.WithField("err", err).Warn("Flush DNS cache failed")
 			} else {
-				log.Info("DNS cache flushed")
+				log.Info("DNS cache flushed (runtime, no restart)")
 			}
 			continue
 		}

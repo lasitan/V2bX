@@ -166,8 +166,8 @@ func dnsFlushHandle(_ *cobra.Command, _ []string) {
 		return
 	}
 	if result.OK {
-		fmt.Println(Ok("DNS 缓存已刷新（内存解析、FakeIP、RDRC、反向映射）"))
-		fmt.Println(Warn("提示：已建立的连接不会自动切换 IP，请断开旧连接后重新访问"))
+		fmt.Println(Ok("DNS 解析缓存已强制清空"))
+		fmt.Println(Warn("提示：新连接将重新解析；已建立的长连接仍使用旧 IP，需客户端断开后重连"))
 		return
 	}
 	if result.Message != "" {
