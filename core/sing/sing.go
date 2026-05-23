@@ -124,6 +124,9 @@ func (b *Sing) Close() error {
 	if b.wsMux != nil {
 		b.wsMux.CloseAll()
 	}
+	if err := b.clearPersistentDNSCache(); err != nil {
+		b.logFactory.NewLogger("dns").Warn("clear persistent DNS cache on close: ", err)
+	}
 	return b.box.Close()
 }
 
