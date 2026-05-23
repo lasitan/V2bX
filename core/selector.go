@@ -167,3 +167,26 @@ func (s *Selector) Type() string {
 	t += ")"
 	return t
 }
+
+func (s *Selector) FlushDNSCache() error {
+	var errs []error
+	flushed := false
+	for name, c := range s.cores {
+		err := c.FlushDNSCache()
+		if err == nil {
+			flushed = true
+			continue
+		}
+		if errors.Is(err, ErrDNSFlushUnsupported) {
+			continue
+		}
+		if name == "" {
+			name = c.Type()
+		}
+		errs = append(errs, fmt.Errorf("%s: %w", name, err))
+	}
+	if !flushed && len(errs) == 0 {
+		return ErrDNSFlushUnsupported
+	}
+	return errors.Join(errs...)
+}

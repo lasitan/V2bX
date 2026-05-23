@@ -974,6 +974,7 @@ show_usage() {
     echo "V2bX disable      - 取消 V2bX 开机自启"
     echo "V2bX log          - 查看 V2bX 日志"
     echo "V2bX check        - 检查本次运行流量统计"
+    echo "V2bX dnsflush     - 刷新 sing-box DNS 缓存"
     echo "V2bX x25519       - 生成 x25519 密钥"
     echo "V2bX generate     - 生成 V2bX 配置文件"
     echo "V2bX update       - 更新 V2bX"
@@ -1050,6 +1051,7 @@ if [[ $# > 0 ]]; then
         "disable") check_install 0 && disable 0 ;;
         "log") check_install 0 && show_log 0 ;;
         "check") check_install 0 && check_runtime_traffic 0 ;;
+        "dnsflush") check_install 0 && dnsflush 0 ;;
         "update") check_install 0 && update 0 $2 ;;
         "config") config $* ;;
         "generate") generate_config_file ;;

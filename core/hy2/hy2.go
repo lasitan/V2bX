@@ -60,3 +60,7 @@ func (h *Hysteria2) Close() error {
 func (h *Hysteria2) Type() string {
 	return "hysteria2"
 }
+
+func (h *Hysteria2) FlushDNSCache() error {
+	return vCore.ErrDNSFlushUnsupported
+}

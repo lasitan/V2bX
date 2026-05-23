@@ -40,6 +40,11 @@ var (
 		Short: "Check runtime upstream/downstream traffic",
 		Run:   checkHandle,
 	}
+	dnsFlushCommand = cobra.Command{
+		Use:   "dns-flush",
+		Short: "Flush sing-box DNS cache without restart",
+		Run:   dnsFlushHandle,
+	}
 )
 
 func init() {
@@ -48,6 +53,7 @@ func init() {
 	command.AddCommand(&restartCommand)
 	command.AddCommand(&logCommand)
 	command.AddCommand(&checkCommand)
+	command.AddCommand(&dnsFlushCommand)
 }
 
 func startHandle(_ *cobra.Command, _ []string) {
@@ -134,6 +140,39 @@ type pendingTrafficPayload struct {
 		Upload   int64 `json:"upload"`
 		Download int64 `json:"download"`
 	} `json:"items"`
+}
+
+func dnsFlushHandle(_ *cobra.Command, _ []string) {
+	r, err := checkRunning()
+	if err != nil {
+		fmt.Println(Err("check status error: ", err))
+		return
+	}
+	if !r {
+		fmt.Println(Err("V2bX 未运行，无法刷新 DNS 缓存"))
+		return
+	}
+
+	since := time.Now()
+	if err = sendDNSFlushSignal(); err != nil {
+		fmt.Println(Err("发送刷新信号失败: ", err))
+		return
+	}
+
+	result, ok := waitDNSFlushResult(dnsFlushResultPath, since, 3*time.Second)
+	if !ok {
+		fmt.Println(Warn("已发送刷新信号，但未收到结果，请使用 V2bX log 查看是否成功"))
+		return
+	}
+	if result.OK {
+		fmt.Println(Ok("DNS 缓存已刷新（内存解析缓存与 FakeIP 持久化缓存）"))
+		return
+	}
+	if result.Message != "" {
+		fmt.Println(Err("DNS 缓存刷新失败: ", result.Message))
+		return
+	}
+	fmt.Println(Err("DNS 缓存刷新失败"))
 }
 
 func checkHandle(_ *cobra.Command, _ []string) {

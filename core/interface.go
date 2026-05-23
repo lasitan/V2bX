@@ -1,9 +1,13 @@
 package core
 
 import (
+	"errors"
+
 	"github.com/InazumaV/V2bX/api/panel"
 	"github.com/InazumaV/V2bX/conf"
 )
+
+var ErrDNSFlushUnsupported = errors.New("dns flush unsupported")
 
 type AddUsersParams struct {
 	Tag   string
@@ -21,4 +25,5 @@ type Core interface {
 	DelUsers(users []panel.UserInfo, tag string, info *panel.NodeInfo) error
 	Protocols() []string
 	Type() string
+	FlushDNSCache() error
 }

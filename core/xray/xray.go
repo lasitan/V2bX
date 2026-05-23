@@ -228,6 +228,10 @@ func (c *Xray) Type() string {
 	return "xray"
 }
 
+func (c *Xray) FlushDNSCache() error {
+	return vCore.ErrDNSFlushUnsupported
+}
+
 func normalizeXrayLogLevel(level string) string {
 	switch strings.ToLower(strings.TrimSpace(level)) {
 	case "debug", "info", "":

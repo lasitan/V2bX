@@ -117,11 +117,21 @@ func serverHandle(_ *cobra.Command, _ []string) {
 			return
 		}
 	}
-	// wait exit signal
-	{
-		osSignals := make(chan os.Signal, 1)
-		signal.Notify(osSignals, syscall.SIGINT, syscall.SIGTERM)
-		<-osSignals
+	osSignals := make(chan os.Signal, 1)
+	signal.Notify(osSignals, syscall.SIGINT, syscall.SIGTERM, syscall.SIGUSR1)
+	for {
+		sig := <-osSignals
+		if sig == syscall.SIGUSR1 {
+			err := vc.FlushDNSCache()
+			writeDNSFlushResult(dnsFlushResultPath, err)
+			if err != nil {
+				log.WithField("err", err).Warn("Flush DNS cache failed")
+			} else {
+				log.Info("DNS cache flushed")
+			}
+			continue
+		}
+		break
 	}
 
 	shutdownTimeout := 3 * time.Second
