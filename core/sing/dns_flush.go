@@ -40,8 +40,11 @@ func (b *Sing) FlushDNSCache() error {
 
 	dnsRouter.ClearCache()
 	clearDNSReverseMapping(dnsRouter)
-	resetRuntimeDNSClient(dnsRouter)
+	resetRuntimeDNSClient(b, dnsRouter)
 
+	if b.logFactory != nil {
+		b.logFactory.NewLogger("dns").Info("dns flush completed: LRU/RDRC/FakeIP cleared, force fresh lookup for ", dnsForceFreshDuration)
+	}
 	return errors.Join(errs...)
 }
 
@@ -64,10 +67,8 @@ func (b *Sing) clearPersistentDNSCache() error {
 		return nil
 	}
 	var errs []error
-	if cacheFile.StoreFakeIP() {
-		if err := resetFakeIPPersist(cacheFile); err != nil {
-			errs = append(errs, fmt.Errorf("clear fakeip cache: %w", err))
-		}
+	if err := resetFakeIPPersist(cacheFile); err != nil {
+		errs = append(errs, fmt.Errorf("clear fakeip cache: %w", err))
 	}
 	if err := resetRDRCCache(cacheFile); err != nil {
 		errs = append(errs, fmt.Errorf("clear rdrc cache: %w", err))
@@ -108,7 +109,7 @@ func (b *Sing) resetFakeIPStores() error {
 
 func resetRDRCCache(cacheFile adapter.CacheFile) error {
 	cf, ok := cacheFile.(*cachefile.CacheFile)
-	if !ok || !cf.StoreRDRC() || cf.DB == nil {
+	if !ok || cf.DB == nil {
 		return nil
 	}
 	key := []byte(rdrcCacheBucket)

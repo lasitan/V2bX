@@ -34,6 +34,11 @@ type Sing struct {
 	users                     *UserMap
 	nodeReportMinTrafficBytes map[string]int64
 	wsMux                     *wsMuxManager
+	dnsBypassMu               sync.Mutex
+	dnsBypassCancel           context.CancelFunc
+	dnsBypassGen              uint64
+	dnsBypassCaptured         bool
+	dnsCacheDisabledDefault   bool
 }
 
 type UserMap struct {
@@ -121,6 +126,7 @@ func (b *Sing) Start() error {
 }
 
 func (b *Sing) Close() error {
+	b.stopDNSBypass()
 	if b.wsMux != nil {
 		b.wsMux.CloseAll()
 	}

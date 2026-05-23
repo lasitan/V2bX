@@ -166,7 +166,7 @@ func dnsFlushHandle(_ *cobra.Command, _ []string) {
 		return
 	}
 	if result.OK {
-		fmt.Println(Ok("DNS 解析缓存已强制清空"))
+		fmt.Println(Ok("DNS 解析缓存已强制清空（30 秒内新连接强制重新解析，服务未重启）"))
 		fmt.Println(Warn("提示：新连接将重新解析；已建立的长连接仍使用旧 IP，需客户端断开后重连"))
 		return
 	}
